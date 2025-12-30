@@ -9,6 +9,10 @@ jobs:
   build:
     name: Build Debug and Release APKs
     runs-on: ubuntu-latest
+    
+    # Limit permissions for security (principle of least privilege)
+    permissions:
+      contents: read  # Required to checkout the repository
 
     steps:
       # Step 1: Check out the repository code with submodules
