@@ -51,8 +51,7 @@ jobs:
         if: success()
         with:
           name: debug-apks
-          path: |
-            */build/outputs/apk/debug/*.apk
+          path: '*/build/outputs/apk/debug/*.apk'
           retention-days: 30
 
       # Step 9: Upload Release APKs as artifacts
@@ -61,6 +60,5 @@ jobs:
         if: success()
         with:
           name: release-apks
-          path: |
-            */build/outputs/apk/release/*.apk
+          path: '*/build/outputs/apk/release/*.apk'
           retention-days: 30
