@@ -19,7 +19,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          submodules: true  # This project uses git submodules
+          submodules: recursive  # This project uses git submodules
 
       # Step 2: Set up JDK 17 (required for this project)
       - name: Set up JDK 17
