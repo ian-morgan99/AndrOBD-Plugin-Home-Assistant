@@ -43,11 +43,11 @@ jobs:
 
       # Step 6: Build Debug APKs for all application modules
       - name: Build Debug APKs
-        run: ./gradlew assembleDebug --stacktrace
+        run: ./gradlew assembleDebug --stacktrace --info
 
       # Step 7: Build Release APKs for all application modules
       - name: Build Release APKs
-        run: ./gradlew assembleRelease --stacktrace
+        run: ./gradlew assembleRelease --stacktrace --info
 
       # Step 8: Upload Debug APKs as artifacts
       - name: Upload Debug APKs
