@@ -54,7 +54,7 @@
         android:dialogTitle="@string/data_items"
         android:entries="@array/empty"
         android:entryValues="@array/empty"
-        android:key="data_items"
+        android:key="items_selected"
         android:dependency="ha_enabled"
         android:summary="@string/data_items_description"
         android:title="@string/data_items"/>
