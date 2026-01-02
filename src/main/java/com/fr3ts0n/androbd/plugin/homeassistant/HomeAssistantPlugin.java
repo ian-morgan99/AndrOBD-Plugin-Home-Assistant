@@ -127,21 +127,28 @@ public class HomeAssistantPlugin extends Plugin
 
     /**
      * Handle data updates
+     * Note: When mSelectedItems is empty, all data items are cached (default behavior).
+     * This provides a "select all" default when no specific items are filtered.
      */
     @Override
     public void onDataUpdate(String key, String value) {
         if (key == null || value == null) return;
 
-        synchronized (dataCache) {
-            // Only add if selected for publishing or no filter set
-            if (mSelectedItems.isEmpty() || mSelectedItems.contains(key)) {
+        // Check if this item should be cached (thread-safe)
+        boolean shouldCache;
+        synchronized (this) {
+            shouldCache = mSelectedItems.isEmpty() || mSelectedItems.contains(key);
+        }
+        
+        if (shouldCache) {
+            synchronized (dataCache) {
                 dataCache.put(key, value);
             }
-        }
-
-        // Schedule update if not already scheduled
-        if (!handler.hasMessages(MSG_SEND_UPDATE)) {
-            handler.sendEmptyMessageDelayed(MSG_SEND_UPDATE, updateInterval);
+            
+            // Schedule update if not already scheduled
+            if (!handler.hasMessages(MSG_SEND_UPDATE)) {
+                handler.sendEmptyMessageDelayed(MSG_SEND_UPDATE, updateInterval);
+            }
         }
     }
 
@@ -190,11 +197,14 @@ public class HomeAssistantPlugin extends Plugin
         if (csvString == null || csvString.isEmpty()) return;
         
         // Parse CSV format: "key;description;value;units\nkey;description;value;units\n..."
-        synchronized (mKnownItems) {
+        synchronized (this) {
             for (String csvLine : csvString.split("\n")) {
                 String[] fields = csvLine.split(";");
                 if (fields.length > 0) {
-                    mKnownItems.add(fields[0].trim());
+                    String key = fields[0].trim();
+                    if (!key.isEmpty()) {
+                        mKnownItems.add(key);
+                    }
                 }
             }
             // Persist known items
@@ -298,18 +308,25 @@ public class HomeAssistantPlugin extends Plugin
                 
             case ITEMS_SELECTED:
                 Set<String> selectedSet = sharedPreferences.getStringSet(key, new HashSet<>());
-                mSelectedItems = new HashSet<>(selectedSet);
+                synchronized (this) {
+                    mSelectedItems = new HashSet<>(selectedSet);
+                }
                 break;
                 
             case ITEMS_KNOWN:
                 Set<String> knownSet = sharedPreferences.getStringSet(key, new HashSet<>());
-                mKnownItems = new HashSet<>(knownSet);
+                synchronized (this) {
+                    mKnownItems = new HashSet<>(knownSet);
+                }
                 break;
         }
     }
     
     /**
      * Load all preferences on initialization
+     * Note: Only loads preferences that require special processing on startup.
+     * Other preferences (PREF_HA_URL, PREF_HA_TOKEN, PREF_HA_SSID, etc.) are 
+     * accessed directly when needed and don't require initialization.
      */
     private void loadPreferences(SharedPreferences prefs) {
         onSharedPreferenceChanged(prefs, PREF_HA_UPDATE_INTERVAL);
