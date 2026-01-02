@@ -12,7 +12,6 @@ import android.util.Log;
 
 import com.fr3ts0n.androbd.plugin.Plugin;
 import com.fr3ts0n.androbd.plugin.PluginInfo;
-import com.fr3ts0n.prot.obd.ObdProt;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -119,7 +118,7 @@ public class HomeAssistantPlugin extends Plugin
      * Handle plugin requirements
      */
     @Override
-    protected void performConfigure() {
+    public void performConfigure() {
         Log.d(TAG, "Configure requested");
         Intent cfgIntent = new Intent(this, SettingsActivity.class);
         cfgIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
