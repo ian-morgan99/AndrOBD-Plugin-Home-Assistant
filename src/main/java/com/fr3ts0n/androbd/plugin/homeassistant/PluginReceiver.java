@@ -1,14 +1,13 @@
 package com.fr3ts0n.androbd.plugin.homeassistant;
 
-import com.fr3ts0n.androbd.plugin.PluginInfo;
-import com.fr3ts0n.androbd.plugin.PluginInfoBroadcastReceiver;
+import com.fr3ts0n.androbd.plugin.PluginReceiver;
 
 /**
- * Plugin info broadcast receiver for Home Assistant plugin
+ * Plugin broadcast receiver for Home Assistant plugin
  */
-public class PluginReceiver extends PluginInfoBroadcastReceiver {
+public class PluginReceiver extends com.fr3ts0n.androbd.plugin.PluginReceiver {
     @Override
-    public PluginInfo getPluginInfo() {
-        return HomeAssistantPlugin.myInfo;
+    public Class getPluginClass() {
+        return HomeAssistantPlugin.class;
     }
 }

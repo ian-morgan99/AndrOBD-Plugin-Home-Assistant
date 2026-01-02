@@ -39,19 +39,40 @@ import java.util.Set;
 /**
  * Home Assistant plugin for AndrOBD
  */
-public class HomeAssistantPlugin extends Plugin implements Handler.Callback {
+public class HomeAssistantPlugin extends Plugin 
+    implements Plugin.ConfigurationHandler,
+               Plugin.ActionHandler,
+               Plugin.DataReceiver,
+               SharedPreferences.OnSharedPreferenceChangeListener,
+               Handler.Callback {
 
     private static final String TAG = "HomeAssistantPlugin";
-    private static final String PREF_URL = "ha_url";
-    private static final String PREF_TOKEN = "ha_token";
-    private static final String PREF_ENTITY_PREFIX = "ha_entity_prefix";
-    private static final String PREF_UPDATE_INTERVAL = "ha_update_interval";
-    private static final String ITEMS_KNOWN = "items_known";
+    
+    // Static plugin info - required by PluginReceiver
+    static final PluginInfo myInfo = new PluginInfo(
+        "Home Assistant",
+        HomeAssistantPlugin.class,
+        "Send OBD data to Home Assistant",
+        "1.0",
+        "GPL-3.0",
+        "Ian Morgan"
+    );
+    
+    // Preference keys - must be public for SettingsActivity access
+    public static final String PREF_HA_URL = "ha_url";
+    public static final String PREF_HA_TOKEN = "ha_token";
+    public static final String PREF_HA_SSID = "ha_ssid";
+    public static final String PREF_HA_UPDATE_INTERVAL = "ha_update_interval";
+    public static final String PREF_HA_TRANSMISSION_MODE = "ha_transmission_mode";
+    public static final String PREF_HA_ENTITY_PREFIX = "ha_entity_prefix";
+    public static final String ITEMS_SELECTED = "items_selected";
+    public static final String ITEMS_KNOWN = "items_known";
 
     private OkHttpClient httpClient;
     private SharedPreferences prefs;
     private Handler handler;
     private HashSet<String> mKnownItems = new HashSet<>();
+    private HashSet<String> mSelectedItems = new HashSet<>();
 
     // Data storage
     private final Map<String, String> dataCache = new HashMap<>();
@@ -64,7 +85,10 @@ public class HomeAssistantPlugin extends Plugin implements Handler.Callback {
         Log.d(TAG, "Plugin created");
 
         prefs = PreferenceManager.getDefaultSharedPreferences(this);
-        mKnownItems = new HashSet<>(prefs.getStringSet(ITEMS_KNOWN, new HashSet<>()));
+        prefs.registerOnSharedPreferenceChangeListener(this);
+        
+        // Load all preferences
+        onSharedPreferenceChanged(prefs, null);
 
         // Initialize HTTP client
         httpClient = new OkHttpClient.Builder()
@@ -75,22 +99,19 @@ public class HomeAssistantPlugin extends Plugin implements Handler.Callback {
 
         // Initialize handler
         handler = new Handler(Looper.getMainLooper(), this);
-
-        // Load update interval
-        String intervalStr = prefs.getString(PREF_UPDATE_INTERVAL, "5");
-        try {
-            updateInterval = Long.parseLong(intervalStr) * 1000;
-        } catch (NumberFormatException e) {
-            updateInterval = 5000;
-        }
     }
 
     @Override
     public void onDestroy() {
         super.onDestroy();
         Log.d(TAG, "Plugin destroyed");
+        
         if (handler != null) {
             handler.removeCallbacksAndMessages(null);
+        }
+        
+        if (prefs != null) {
+            prefs.unregisterOnSharedPreferenceChangeListener(this);
         }
     }
 
@@ -109,11 +130,14 @@ public class HomeAssistantPlugin extends Plugin implements Handler.Callback {
      * Handle data updates
      */
     @Override
-    public void performDataUpdate(String key, String value) {
+    public void onDataUpdate(String key, String value) {
         if (key == null || value == null) return;
 
         synchronized (dataCache) {
-            dataCache.put(key, value);
+            // Only add if selected for publishing or no filter set
+            if (mSelectedItems.isEmpty() || mSelectedItems.contains(key)) {
+                dataCache.put(key, value);
+            }
         }
 
         // Schedule update if not already scheduled
@@ -138,9 +162,9 @@ public class HomeAssistantPlugin extends Plugin implements Handler.Callback {
      * Send accumulated data to Home Assistant
      */
     private void sendDataToHomeAssistant() {
-        String url = prefs.getString(PREF_URL, "");
-        String token = prefs.getString(PREF_TOKEN, "");
-        String entityPrefix = prefs.getString(PREF_ENTITY_PREFIX, "sensor.androbd_");
+        String url = prefs.getString(PREF_HA_URL, "");
+        String token = prefs.getString(PREF_HA_TOKEN, "");
+        String entityPrefix = prefs.getString(PREF_HA_ENTITY_PREFIX, "sensor.androbd_");
 
         if (url.isEmpty() || token.isEmpty()) {
             Log.w(TAG, "Home Assistant URL or token not configured");
@@ -164,12 +188,23 @@ public class HomeAssistantPlugin extends Plugin implements Handler.Callback {
 
     @Override
     public void onDataListUpdate(String csvString) {
-        if (csvString != null && !csvString.isEmpty()) {
-            String[] strings = csvString.split(",");
-            for (String item : strings) {
-                mKnownItems.add(item.trim());
+        if (csvString == null || csvString.isEmpty()) return;
+        
+        // Parse CSV format: "key;description;value;units\nkey;description;value;units\n..."
+        synchronized (mKnownItems) {
+            for (String csvLine : csvString.split("\n")) {
+                String[] fields = csvLine.split(";");
+                if (fields.length > 0) {
+                    mKnownItems.add(fields[0].trim());
+                }
             }
+            // Persist known items
             prefs.edit().putStringSet(ITEMS_KNOWN, mKnownItems).apply();
+        }
+        
+        // Clear data cache for fresh update cycle
+        synchronized (dataCache) {
+            dataCache.clear();
         }
     }
 
@@ -228,20 +263,58 @@ public class HomeAssistantPlugin extends Plugin implements Handler.Callback {
 
     @Override
     public void performAction() {
-        Log.d(TAG, "Action requested");
+        Log.d(TAG, "Action requested - triggering manual update");
+        sendDataToHomeAssistant();
     }
 
     /**
      * Get plugin information
      */
-    public static PluginInfo getPluginInfo() {
-        return new PluginInfo(
-                "Home Assistant",
-                HomeAssistantPlugin.class,
-                "Send OBD data to Home Assistant",
-                "1.0",
-                "GPL-3.0",
-                "Ian Morgan"
-        );
+    @Override
+    public PluginInfo getPluginInfo() {
+        return myInfo;
+    }
+    
+    /**
+     * Handle preference changes
+     */
+    @Override
+    public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
+        if (key == null) {
+            // Load all preferences
+            loadPreferences(sharedPreferences);
+            return;
+        }
+        
+        // Handle specific preference changes
+        switch (key) {
+            case PREF_HA_UPDATE_INTERVAL:
+                String intervalStr = sharedPreferences.getString(key, "5");
+                try {
+                    updateInterval = Long.parseLong(intervalStr) * 1000;
+                } catch (NumberFormatException e) {
+                    updateInterval = 5000;
+                }
+                break;
+                
+            case ITEMS_SELECTED:
+                Set<String> selectedSet = sharedPreferences.getStringSet(key, new HashSet<>());
+                mSelectedItems = new HashSet<>(selectedSet);
+                break;
+                
+            case ITEMS_KNOWN:
+                Set<String> knownSet = sharedPreferences.getStringSet(key, new HashSet<>());
+                mKnownItems = new HashSet<>(knownSet);
+                break;
+        }
+    }
+    
+    /**
+     * Load all preferences on initialization
+     */
+    private void loadPreferences(SharedPreferences prefs) {
+        onSharedPreferenceChanged(prefs, PREF_HA_UPDATE_INTERVAL);
+        onSharedPreferenceChanged(prefs, ITEMS_SELECTED);
+        onSharedPreferenceChanged(prefs, ITEMS_KNOWN);
     }
 }
