@@ -9,12 +9,5 @@ buildscript {
     }
 }
 
-allprojects {
-    repositories {
-        mavenCentral()
-        google()
-    }
-}
-
 // Apply the Android application plugin to root
 apply from: 'build.gradle.module'
