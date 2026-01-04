@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Exclude sensitive authentication data from backups -->
+    <exclude domain="sharedpref" path="com.fr3ts0n.androbd.plugin.homeassistant_preferences.xml"/>
+    
+    <!-- Include other app data -->
+    <include domain="file" path="."/>
+    <include domain="database" path="."/>
+</full-backup-content>
