@@ -335,6 +335,8 @@ public class HomeAssistantPlugin extends Plugin
     /**
      * Check if device has active internet connectivity
      * This verifies that we can actually reach the internet, not just that WiFi is connected
+     * Note: Uses deprecated NetworkInfo API for compatibility with minSdkVersion 15.
+     * For apps targeting API 29+, consider using NetworkCapabilities with registerDefaultNetworkCallback.
      */
     private boolean hasInternetConnectivity() {
         if (connectivityManager == null) {
@@ -464,11 +466,15 @@ public class HomeAssistantPlugin extends Plugin
                         } else {
                             Log.e(TAG, "HTTP error updating " + entityId + ": " + response.code() + " " + response.message());
                             // Log response body for debugging if available
-                            try {
-                                String responseBody = response.body() != null ? response.body().string() : "no body";
-                                Log.e(TAG, "Response body: " + responseBody);
-                            } catch (IOException e) {
-                                Log.e(TAG, "Could not read error response body", e);
+                            if (response.body() != null) {
+                                try {
+                                    String responseBody = response.body().string();
+                                    if (responseBody != null && !responseBody.isEmpty()) {
+                                        Log.e(TAG, "Response body: " + responseBody);
+                                    }
+                                } catch (IOException e) {
+                                    Log.e(TAG, "Could not read error response body", e);
+                                }
                             }
                         }
                     } finally {
