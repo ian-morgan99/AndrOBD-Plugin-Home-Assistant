@@ -93,6 +93,7 @@ public class HomeAssistantPlugin extends Plugin
     private long updateInterval = 5000; // Default 5 seconds
     private long wifiCheckInterval = 30000; // Check WiFi every 30 seconds
     private long switchDelay = 5000; // Wait 5 seconds for stable connection after switch
+    private long transmissionTimeout = 10000; // Wait 10 seconds for transmission to complete before switching back
     private String transmissionMode = "realtime";
     private String targetSSID = "";
     private String obdSSID = "";
@@ -348,7 +349,7 @@ public class HomeAssistantPlugin extends Plugin
             
             // Schedule switch back to OBD WiFi after transmission completes
             // Give time for transmission to complete
-            handler.sendEmptyMessageDelayed(MSG_SWITCH_TO_OBD, switchDelay * 2);
+            handler.sendEmptyMessageDelayed(MSG_SWITCH_TO_OBD, transmissionTimeout);
         } else if (!isHomeWifiInRange && isOBDWifiInRange && !isConnectedToSSID(obdSSID)) {
             // Home WiFi not in range, OBD WiFi is available but not connected
             Log.i(TAG, "Auto-switch: Switching back to OBD WiFi to continue data collection");
@@ -358,7 +359,11 @@ public class HomeAssistantPlugin extends Plugin
 
     /**
      * Perform network switch to specified SSID
-     * Note: Requires CHANGE_WIFI_STATE permission
+     * Note: Requires CHANGE_WIFI_STATE permission.
+     * Note: Uses deprecated WiFi APIs for compatibility with minSdkVersion 15.
+     * On Android 10+ (API 29+), these APIs are deprecated and may not work reliably.
+     * For production use on modern Android versions, consider using NetworkSpecifier
+     * or WifiNetworkSuggestion APIs, but these require higher minSdkVersion.
      */
     private void performNetworkSwitch(String ssid, boolean isHomeNetwork) {
         if (wifiManager == null || ssid == null || ssid.isEmpty()) {
@@ -373,9 +378,10 @@ public class HomeAssistantPlugin extends Plugin
             Log.i(TAG, "Attempting to switch to network: " + ssidClean);
             
             // Get list of configured networks
+            // NOTE: Returns null on Android 10+ due to privacy restrictions
             List<WifiConfiguration> configuredNetworks = wifiManager.getConfiguredNetworks();
             if (configuredNetworks == null) {
-                Log.e(TAG, "Could not get configured networks - may need CHANGE_WIFI_STATE permission");
+                Log.e(TAG, "Could not get configured networks - may not work on Android 10+ or need CHANGE_WIFI_STATE permission");
                 isSwitchingNetwork = false;
                 return;
             }
@@ -396,10 +402,10 @@ public class HomeAssistantPlugin extends Plugin
                 return;
             }
             
-            // Disconnect from current network
+            // Disconnect from current network (deprecated in API 29+)
             wifiManager.disconnect();
             
-            // Enable the target network
+            // Enable the target network (deprecated in API 29+, requires device/profile owner on 29+)
             boolean enabled = wifiManager.enableNetwork(networkId, true);
             if (!enabled) {
                 Log.e(TAG, "Failed to enable network: " + ssidClean);
@@ -407,7 +413,7 @@ public class HomeAssistantPlugin extends Plugin
                 return;
             }
             
-            // Reconnect to the network
+            // Reconnect to the network (deprecated in API 29+)
             boolean reconnected = wifiManager.reconnect();
             if (!reconnected) {
                 Log.e(TAG, "Failed to reconnect to network: " + ssidClean);
@@ -422,10 +428,15 @@ public class HomeAssistantPlugin extends Plugin
                 @Override
                 public void run() {
                     isSwitchingNetwork = false;
+                    // Update WiFi state to get current connection status
+                    checkWifiState();
+                    
                     if (isHomeNetwork && isConnectedToHomeWifi) {
                         Log.i(TAG, "Successfully connected to home WiFi, ready for transmission");
-                    } else if (!isHomeNetwork) {
+                    } else if (!isHomeNetwork && isConnectedToSSID(obdSSID)) {
                         Log.i(TAG, "Successfully switched to OBD WiFi, resuming data collection");
+                    } else {
+                        Log.w(TAG, "Network switch may not have completed successfully");
                     }
                 }
             }, switchDelay);

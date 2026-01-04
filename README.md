@@ -140,6 +140,7 @@ Enable automatic WiFi switching for truly hands-free operation:
 **Important notes:**
 - Automatic switching requires `CHANGE_WIFI_STATE` permission (already included)
 - Both WiFi networks must be saved in device settings before automatic switching works
+- **Android 10+ Compatibility**: Automatic switching uses deprecated WiFi APIs that may not work reliably on Android 10 (API 29) and newer due to privacy restrictions. Manual switching mode is recommended for newer Android versions.
 - Transmission only occurs when actively connected to home WiFi with internet access
 - The plugin verifies internet connectivity before every transmission attempt
 - Failed transmissions are logged with detailed error messages for troubleshooting
