@@ -27,25 +27,30 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: gradle  # Cache Gradle dependencies for faster builds
 
-      # Step 3: Set up Android SDK
+      # Step 3: Set up Gradle with caching
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+
+      # Step 4: Set up Android SDK
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      # Step 4: Grant execute permission to Gradle wrapper
+      # Step 6: Grant execute permission for gradlew
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      # Step 5: Build Debug APKs for all application modules
+      # Step 7: Build Debug APKs for all application modules
       - name: Build Debug APKs
         run: ./gradlew assembleDebug --stacktrace --info
 
-      # Step 6: Build Release APKs for all application modules
+      # Step 8: Build Release APKs for all application modules
       - name: Build Release APKs
         run: ./gradlew assembleRelease --stacktrace --info
 
-      # Step 7: Upload Debug APKs as artifacts
+      # Step 9: Upload Debug APKs as artifacts
       - name: Upload Debug APKs
         uses: actions/upload-artifact@v4
         if: success()
@@ -56,7 +61,7 @@ jobs:
             */build/outputs/apk/debug/*.apk
           retention-days: 30
 
-      # Step 8: Upload Release APKs as artifacts
+      # Step 10: Upload Release APKs as artifacts
       - name: Upload Release APKs
         uses: actions/upload-artifact@v4
         if: success()
