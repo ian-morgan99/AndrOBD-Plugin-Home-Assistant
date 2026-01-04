@@ -300,8 +300,8 @@ public class HomeAssistantPlugin extends Plugin
     private boolean shouldSendData() {
         switch (transmissionMode) {
             case "realtime":
-                // Always send in real-time mode
-                return true;
+                // Always send in real-time mode (assuming internet connectivity)
+                return hasInternetConnectivity();
                 
             case "ssid_connected":
                 // Only send when connected to target WiFi
@@ -309,21 +309,52 @@ public class HomeAssistantPlugin extends Plugin
                     Log.w(TAG, "Target SSID not configured for ssid_connected mode");
                     return false;
                 }
-                return isConnectedToHomeWifi;
+                // Must be connected to home WiFi AND have internet connectivity
+                return isConnectedToHomeWifi && hasInternetConnectivity();
                 
             case "ssid_in_range":
-                // Send when target WiFi is in range (handles auto-switching scenario)
+                // For ssid_in_range mode: Only send when actually CONNECTED to home WiFi with internet
+                // (not just when in range - user must manually switch to home WiFi first)
                 if (targetSSID == null || targetSSID.isEmpty()) {
                     Log.w(TAG, "Target SSID not configured for ssid_in_range mode");
                     return false;
                 }
-                // If we're connected to home WiFi, send immediately
-                // If home WiFi is in range but not connected, still send (buffered data will be sent when we connect)
-                return isHomeWifiInRange || isConnectedToHomeWifi;
+                // Must be connected to home WiFi (not just in range) AND have internet connectivity
+                boolean canSend = isConnectedToHomeWifi && hasInternetConnectivity();
+                if (!canSend && isHomeWifiInRange) {
+                    Log.d(TAG, "Home WiFi in range but not connected - switch networks to transmit buffered data");
+                }
+                return canSend;
                 
             default:
                 Log.w(TAG, "Unknown transmission mode: " + transmissionMode);
-                return true; // Default to sending
+                return hasInternetConnectivity(); // Default to sending if internet available
+        }
+    }
+
+    /**
+     * Check if device has active internet connectivity
+     * This verifies that we can actually reach the internet, not just that WiFi is connected
+     */
+    private boolean hasInternetConnectivity() {
+        if (connectivityManager == null) {
+            return false;
+        }
+
+        try {
+            NetworkInfo activeNetwork = connectivityManager.getActiveNetworkInfo();
+            boolean isConnected = activeNetwork != null && 
+                                  activeNetwork.isConnectedOrConnecting() &&
+                                  activeNetwork.isAvailable();
+            
+            if (!isConnected) {
+                Log.d(TAG, "No active network connection available");
+            }
+            
+            return isConnected;
+        } catch (Exception e) {
+            Log.e(TAG, "Error checking internet connectivity", e);
+            return false;
         }
     }
 
@@ -421,21 +452,34 @@ public class HomeAssistantPlugin extends Plugin
             httpClient.newCall(request).enqueue(new Callback() {
                 @Override
                 public void onFailure(@NonNull Call call, @NonNull IOException e) {
-                    Log.e(TAG, "Failed to send update for " + key, e);
+                    Log.e(TAG, "Network error sending update for " + key + ": " + e.getMessage(), e);
+                    // Data will remain in cache and retry on next update cycle
                 }
 
                 @Override
                 public void onResponse(@NonNull Call call, @NonNull Response response) {
-                    if (response.isSuccessful()) {
-                        Log.d(TAG, "Successfully updated " + entityId);
-                    } else {
-                        Log.e(TAG, "Failed to update " + entityId + ": " + response.code());
+                    try {
+                        if (response.isSuccessful()) {
+                            Log.d(TAG, "Successfully updated " + entityId);
+                        } else {
+                            Log.e(TAG, "HTTP error updating " + entityId + ": " + response.code() + " " + response.message());
+                            // Log response body for debugging if available
+                            try {
+                                String responseBody = response.body() != null ? response.body().string() : "no body";
+                                Log.e(TAG, "Response body: " + responseBody);
+                            } catch (IOException e) {
+                                Log.e(TAG, "Could not read error response body", e);
+                            }
+                        }
+                    } finally {
+                        response.close();
                     }
-                    response.close();
                 }
             });
         } catch (JSONException e) {
             Log.e(TAG, "Error creating JSON for " + key, e);
+        } catch (Exception e) {
+            Log.e(TAG, "Unexpected error sending update for " + key, e);
         }
     }
 

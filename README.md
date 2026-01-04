@@ -42,18 +42,17 @@ This extension plugin allows AndrOBD to publish OBD-II vehicle data to Home Assi
 
 ## Configuration
 
-### 1. Setting up Home Assistant Webhook
+### 1. Setting up Home Assistant
 
-First, you need to create a webhook automation in Home Assistant:
+This plugin uses the Home Assistant REST API to create sensor entities. You need to generate a long-lived access token:
 
-1. In Home Assistant, go to **Settings** → **Automations & Scenes**
-2. Create a new automation
-3. Add a **Webhook** trigger and note the webhook ID
-4. Your webhook URL will be: `https://your-homeassistant-url:8123/api/webhook/YOUR_WEBHOOK_ID`
+1. In Home Assistant, click on your profile (bottom left)
+2. Scroll down to **Long-Lived Access Tokens**
+3. Click **Create Token**
+4. Give it a name (e.g., "AndrOBD Plugin")
+5. Copy the token - you'll need it for the plugin configuration
 
-Alternatively, you can use the REST API with a long-lived access token:
-- URL: `https://your-homeassistant-url:8123/api/states/sensor.your_sensor`
-- Generate a long-lived access token in your Home Assistant profile
+Your API URL will be: `https://your-homeassistant-url:8123`
 
 ### 2. Configuring the Plugin
 
@@ -62,16 +61,16 @@ Alternatively, you can use the REST API with a long-lived access token:
 
 #### Required Settings:
 - **Enable Home Assistant**: Check to enable the integration
-- **Home Assistant URL**: Enter your webhook or API URL
-  - Webhook example: `https://homeassistant.local:8123/api/webhook/abc123xyz`
-  - API example: `https://homeassistant.local:8123/api/states/sensor.vehicle_data`
+- **Home Assistant URL**: Enter your Home Assistant base URL
+  - Example: `https://homeassistant.local:8123`
+  - Do NOT include `/api/states` or entity names
+- **Bearer Token**: Paste the long-lived access token you created above
 
 #### Optional Settings:
-- **Bearer Token**: Long-lived access token (required for API endpoints, optional for webhooks)
 - **Transmission Mode**: Choose between:
-  - **Real-time**: Send data continuously while connected to OBD
+  - **Real-time**: Send data continuously while connected to OBD (requires internet connection)
   - **SSID Connected**: Only send data when connected to specific WiFi network
-  - **SSID in Range**: Send data when home WiFi is detected in range (ideal for WiFi OBD adapters)
+  - **SSID in Range**: Send data when connected to home WiFi (ideal for WiFi OBD adapters - detects when home is nearby)
 - **Target WiFi SSID**: The network name to monitor (for SSID-based transmission modes)
 - **Update Interval**: How often to send data in milliseconds (default: 5000ms = 5 seconds)
 - **Data Items**: Select specific OBD parameters to publish (leave empty to publish all)
@@ -99,76 +98,112 @@ In SSID connected mode, the plugin buffers data and only transmits when the Andr
 - Automatic synchronization when arriving home
 
 ### SSID in Range Mode (Recommended for WiFi OBD Adapters)
-In SSID in range mode, the plugin detects when your home WiFi network is within range and can transmit data. This mode is specifically designed for wireless OBD adapters that occupy the device's WiFi connection. Key features:
+In SSID in range mode, the plugin detects when your home WiFi network is within range and enables data transmission when you manually switch to it. This mode is specifically designed for wireless OBD adapters that occupy the device's WiFi connection. Key features:
 - **Smart WiFi Detection**: Continuously scans for your home WiFi network
-- **Automatic Switching**: When home WiFi is detected in range, the device can switch connections to transmit buffered data
+- **Manual Network Switching**: User must manually switch from OBD WiFi to home WiFi to transmit
+- **Connectivity Verification**: Always checks for internet connectivity before attempting transmission
 - **Seamless Operation**: Allows alternating between OBD WiFi connection and home WiFi for data upload
 - **Best for Wireless OBD**: Solves the problem where wireless OBD readers prevent simultaneous home WiFi connection
 
 **How it works with WiFi OBD adapters:**
 1. Device connects to OBD adapter's WiFi network to collect vehicle data
-2. Plugin buffers the OBD data locally
-3. Plugin periodically scans for home WiFi network in range
-4. When home WiFi is detected, you can switch connections to upload buffered data
-5. After upload, reconnect to OBD WiFi to continue data collection
+2. Plugin buffers the OBD data locally while connected to OBD WiFi
+3. Plugin periodically scans for home WiFi network in range (every 30 seconds)
+4. When home WiFi is detected in range, plugin logs a message indicating you can switch networks
+5. **User manually switches** from OBD WiFi to home WiFi in device settings
+6. Wait a few seconds for stable connection and internet connectivity
+7. Plugin automatically transmits all buffered data to Home Assistant
+8. After successful transmission, **user manually switches** back to OBD WiFi to continue data collection
+9. When leaving home range, wait a few seconds for stable OBD connection before switching back
 
-**Note**: On Android 6.0+, location permission is required for WiFi scanning functionality.
+**Important notes:**
+- Transmission only occurs when **actively connected** to home WiFi with internet access, not just when in range
+- The plugin verifies internet connectivity before every transmission attempt
+- Failed transmissions are logged with detailed error messages for troubleshooting
+- On Android 6.0+, location permission is required for WiFi scanning functionality
 
 ## Data Format
 
-The plugin sends data to Home Assistant in JSON format. The first transmission includes configuration and status information:
+The plugin sends individual OBD sensor data to Home Assistant using the REST API `/api/states/` endpoint. Each OBD parameter is sent as a separate entity.
 
-```json
+**HTTP Request Format:**
+```
+POST https://your-homeassistant-url:8123/api/states/sensor.androbd_engine_rpm
+Authorization: Bearer YOUR_TOKEN
+Content-Type: application/json
+
 {
-  "config": {
-    "ENGINE_RPM": { "class": "frequency", "unit": "rpm" },
-    "SPEED": { "class": "speed", "unit": "km/h" },
-    "COOLANT_TMP": { "class": "temperature", "unit": "°C" },
-    "FUEL": { "class": "none", "unit": "%" }
-  },
-  "status": {
-    "device_id": "androbd_device_12345",
-    "app_version": "V1.0.0",
-    "device_model": "Android Device",
-    "android_version": "13",
-    "transmission_mode": "realtime"
-  },
-  "obd_data": {
-    "ENGINE_RPM": "2500",
-    "SPEED": "65",
-    "COOLANT_TMP": "90",
-    "FUEL": "75.5"
-  },
-  "timestamp": "2024-12-29T12:34:56.789Z"
+  "state": "2500",
+  "attributes": {
+    "friendly_name": "ENGINE_RPM",
+    "source": "AndrOBD"
+  }
 }
 ```
 
-Subsequent transmissions contain only the `obd_data` and `timestamp` fields.
+**Entity Naming:**
+- OBD keys are converted to valid Home Assistant entity IDs
+- Default prefix: `sensor.androbd_`
+- Keys are lowercased and special characters replaced with underscores
+- Examples:
+  - `ENGINE_RPM` → `sensor.androbd_engine_rpm`
+  - `COOLANT_TMP` → `sensor.androbd_coolant_tmp`
+  - `SPEED` → `sensor.androbd_speed`
+
+**Data Transmission:**
+- Each OBD parameter is sent as an individual POST request
+- Only selected data items are sent (or all if none selected)
+- Data is buffered locally and sent based on transmission mode settings
+- Failed transmissions are logged with error details
+
+**What gets sent to Home Assistant:**
+- **state**: The current value of the OBD parameter (e.g., "2500", "65", "90.5")
+- **attributes.friendly_name**: The original OBD key name for display
+- **attributes.source**: Always set to "AndrOBD" to identify the data source
 
 ## Using Data in Home Assistant
 
-### Creating Sensors from Webhook Data
+### Accessing the Sensor Data
 
-Create template sensors in your `configuration.yaml`:
+The plugin creates individual sensor entities in Home Assistant that you can use directly. No additional configuration is needed - the sensors appear automatically when data is first sent.
+
+**Entity IDs created:**
+- `sensor.androbd_engine_rpm` - Engine RPM
+- `sensor.androbd_speed` - Vehicle speed
+- `sensor.androbd_coolant_tmp` - Coolant temperature
+- `sensor.androbd_fuel` - Fuel level
+- And more, depending on what your vehicle's OBD system provides
+
+**Viewing the sensors:**
+1. Go to **Developer Tools** → **States** in Home Assistant
+2. Search for `sensor.androbd_` to see all available sensors
+3. Each sensor shows its current value and attributes
+
+**Using in Dashboards:**
+You can add these sensors directly to your Home Assistant dashboard using entity cards, gauge cards, or any other card type.
+
+### Optional: Customizing Sensors
+
+If you want to customize the sensors (add units, device class, etc.), add this to your `configuration.yaml`:
 
 ```yaml
-template:
-  - trigger:
-      - platform: webhook
-        webhook_id: YOUR_WEBHOOK_ID
-    sensor:
-      - name: "Vehicle RPM"
-        state: "{{ trigger.json.obd_data.ENGINE_RPM }}"
-        unit_of_measurement: "rpm"
-        
-      - name: "Vehicle Speed"
-        state: "{{ trigger.json.obd_data.SPEED }}"
-        unit_of_measurement: "km/h"
-        
-      - name: "Coolant Temperature"
-        state: "{{ trigger.json.obd_data.COOLANT_TMP }}"
-        unit_of_measurement: "°C"
-        device_class: temperature
+homeassistant:
+  customize:
+    sensor.androbd_engine_rpm:
+      friendly_name: "Vehicle RPM"
+      unit_of_measurement: "rpm"
+      icon: mdi:engine
+      
+    sensor.androbd_speed:
+      friendly_name: "Vehicle Speed"
+      unit_of_measurement: "km/h"
+      icon: mdi:speedometer
+      
+    sensor.androbd_coolant_tmp:
+      friendly_name: "Coolant Temperature"
+      unit_of_measurement: "°C"
+      device_class: temperature
+      icon: mdi:thermometer
 ```
 
 ### Example Automations
@@ -179,7 +214,7 @@ automation:
   - alias: "High Coolant Temperature Alert"
     trigger:
       - platform: numeric_state
-        entity_id: sensor.coolant_temperature
+        entity_id: sensor.androbd_coolant_tmp
         above: 100
     action:
       - service: notify.mobile_app
@@ -187,18 +222,18 @@ automation:
           message: "Warning: Vehicle coolant temperature is high!"
 ```
 
-**Track fuel efficiency:**
+**Track vehicle data when it changes:**
 ```yaml
 automation:
   - alias: "Log Vehicle Data"
     trigger:
-      - platform: webhook
-        webhook_id: YOUR_WEBHOOK_ID
+      - platform: state
+        entity_id: sensor.androbd_speed
     action:
       - service: logbook.log
         data:
           name: "Vehicle Data"
-          message: "Speed: {{ trigger.json.obd_data.SPEED }} km/h, RPM: {{ trigger.json.obd_data.ENGINE_RPM }}"
+          message: "Speed: {{ states('sensor.androbd_speed') }} km/h, RPM: {{ states('sensor.androbd_engine_rpm') }}"
 ```
 
 ## Troubleshooting
