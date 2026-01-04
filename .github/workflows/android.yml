@@ -43,6 +43,7 @@ jobs:
         name: debug-apk
         path: |
           build/outputs/apk/debug/*.apk
+          */build/outputs/apk/debug/*.apk
         retention-days: 30
     - name: Upload Release APK
       uses: actions/upload-artifact@v4
@@ -51,4 +52,5 @@ jobs:
         name: release-apk
         path: |
           build/outputs/apk/release/*.apk
+          */build/outputs/apk/release/*.apk
         retention-days: 30
