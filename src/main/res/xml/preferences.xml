@@ -42,6 +42,21 @@
         android:title="@string/ha_ssid"/>
 
     <EditTextPreference
+        android:defaultValue=""
+        android:inputType="text"
+        android:key="ha_obd_ssid"
+        android:dependency="ha_enabled"
+        android:summary="@string/ha_obd_ssid_description"
+        android:title="@string/ha_obd_ssid"/>
+
+    <CheckBoxPreference
+        android:defaultValue="false"
+        android:key="ha_auto_switch"
+        android:dependency="ha_enabled"
+        android:summary="@string/ha_auto_switch_description"
+        android:title="@string/ha_auto_switch"/>
+
+    <EditTextPreference
         android:defaultValue="5000"
         android:inputType="number"
         android:key="ha_update_interval"
