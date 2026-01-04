@@ -38,19 +38,19 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      # Step 6: Grant execute permission for gradlew
+      # Step 5: Grant execute permission for gradlew
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      # Step 7: Build Debug APKs for all application modules
+      # Step 6: Build Debug APKs for all application modules
       - name: Build Debug APKs
         run: ./gradlew assembleDebug --stacktrace --info
 
-      # Step 8: Build Release APKs for all application modules
+      # Step 7: Build Release APKs for all application modules
       - name: Build Release APKs
         run: ./gradlew assembleRelease --stacktrace --info
 
-      # Step 9: Upload Debug APKs as artifacts
+      # Step 8: Upload Debug APKs as artifacts
       - name: Upload Debug APKs
         uses: actions/upload-artifact@v4
         if: success()
@@ -61,7 +61,7 @@ jobs:
             */build/outputs/apk/debug/*.apk
           retention-days: 30
 
-      # Step 10: Upload Release APKs as artifacts
+      # Step 9: Upload Release APKs as artifacts
       - name: Upload Release APKs
         uses: actions/upload-artifact@v4
         if: success()
