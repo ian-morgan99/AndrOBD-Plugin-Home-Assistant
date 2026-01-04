@@ -211,18 +211,22 @@ public class HomeAssistantPlugin extends Plugin
             return;
         }
 
-        // Check if connected to target WiFi
+        // Always check if connected to target WiFi (needed for both modes)
         isConnectedToHomeWifi = isConnectedToSSID(targetSSID);
         
-        // Check if target WiFi is in range
+        // Check if target WiFi is in range (only needed for ssid_in_range mode)
         if ("ssid_in_range".equals(transmissionMode)) {
             isHomeWifiInRange = isSSIDInRange(targetSSID);
             Log.d(TAG, "WiFi state - Home in range: " + isHomeWifiInRange + ", Connected: " + isConnectedToHomeWifi);
+        } else if ("ssid_connected".equals(transmissionMode)) {
+            Log.d(TAG, "WiFi state - Connected: " + isConnectedToHomeWifi);
         }
     }
 
     /**
      * Check if currently connected to a specific SSID
+     * Note: Uses deprecated NetworkInfo API for compatibility with minSdkVersion 15.
+     * For apps targeting API 29+, consider using NetworkCallback instead.
      */
     private boolean isConnectedToSSID(String ssid) {
         if (wifiManager == null || connectivityManager == null) {
@@ -253,6 +257,9 @@ public class HomeAssistantPlugin extends Plugin
 
     /**
      * Check if a specific SSID is in range (visible in scan results)
+     * Note: WiFi scanning is asynchronous. This method uses the most recent scan results
+     * available, which may be slightly stale. Since we check periodically (every 30 seconds),
+     * this provides sufficient accuracy for detecting home WiFi proximity.
      */
     private boolean isSSIDInRange(String ssid) {
         if (wifiManager == null) {
@@ -260,10 +267,10 @@ public class HomeAssistantPlugin extends Plugin
         }
 
         try {
-            // Start WiFi scan
+            // Start WiFi scan - results will be available after a short delay
             wifiManager.startScan();
             
-            // Get scan results
+            // Get most recent scan results (may be from previous scan)
             List<ScanResult> scanResults = wifiManager.getScanResults();
             if (scanResults == null || scanResults.isEmpty()) {
                 return false;
