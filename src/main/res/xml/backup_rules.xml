@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
     <!-- Exclude sensitive authentication data from backups -->
-    <!-- Default SharedPreferences file used by PreferenceManager.getDefaultSharedPreferences() -->
+    <!-- File pattern matches default SharedPreferences created by PreferenceManager.getDefaultSharedPreferences() -->
+    <!-- which creates a file named: {packageName}_preferences.xml -->
     <exclude domain="sharedpref" path="${applicationId}_preferences.xml"/>
     
     <!-- Include other app data -->
