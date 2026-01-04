@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
     <!-- Exclude sensitive authentication data from backups -->
-    <exclude domain="sharedpref" path="com.fr3ts0n.androbd.plugin.homeassistant_preferences.xml"/>
+    <!-- Default SharedPreferences file used by PreferenceManager.getDefaultSharedPreferences() -->
+    <exclude domain="sharedpref" path="${applicationId}_preferences.xml"/>
     
     <!-- Include other app data -->
     <include domain="file" path="."/>
