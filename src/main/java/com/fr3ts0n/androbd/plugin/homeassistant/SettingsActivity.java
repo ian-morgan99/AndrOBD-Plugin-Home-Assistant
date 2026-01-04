@@ -126,6 +126,7 @@ public class SettingsActivity extends Activity {
             updateSummary(findPreference(HomeAssistantPlugin.PREF_HA_TOKEN));
             updateSummary(findPreference(HomeAssistantPlugin.PREF_HA_TRANSMISSION_MODE));
             updateSummary(findPreference(HomeAssistantPlugin.PREF_HA_SSID));
+            updateSummary(findPreference(HomeAssistantPlugin.PREF_HA_OBD_SSID));
             updateSummary(findPreference(HomeAssistantPlugin.PREF_HA_UPDATE_INTERVAL));
             updateSummary(dataItemsPref);
         }

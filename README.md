@@ -70,8 +70,10 @@ Your API URL will be: `https://your-homeassistant-url:8123`
 - **Transmission Mode**: Choose between:
   - **Real-time**: Send data continuously while connected to OBD (requires internet connection)
   - **SSID Connected**: Only send data when connected to specific WiFi network
-  - **SSID in Range**: Send data when connected to home WiFi (ideal for WiFi OBD adapters - detects when home is nearby)
-- **Target WiFi SSID**: The network name to monitor (for SSID-based transmission modes)
+  - **SSID in Range**: Send data when connected to home WiFi (supports automatic switching for WiFi OBD adapters)
+- **Home WiFi SSID**: Your home WiFi network name (required for SSID-based modes)
+- **OBD WiFi SSID**: Your OBD adapter's WiFi network name (required for automatic switching)
+- **Enable Auto WiFi Switching**: Check to enable automatic network switching between OBD and home WiFi (requires both SSIDs configured)
 - **Update Interval**: How often to send data in milliseconds (default: 5000ms = 5 seconds)
 - **Data Items**: Select specific OBD parameters to publish (leave empty to publish all)
 
@@ -98,14 +100,15 @@ In SSID connected mode, the plugin buffers data and only transmits when the Andr
 - Automatic synchronization when arriving home
 
 ### SSID in Range Mode (Recommended for WiFi OBD Adapters)
-In SSID in range mode, the plugin detects when your home WiFi network is within range and enables data transmission when you manually switch to it. This mode is specifically designed for wireless OBD adapters that occupy the device's WiFi connection. Key features:
+In SSID in range mode, the plugin detects when your home WiFi network is within range. This mode supports both **manual** and **automatic** WiFi switching for wireless OBD adapters that occupy the device's WiFi connection.
+
+#### Manual Switching Mode (Default)
 - **Smart WiFi Detection**: Continuously scans for your home WiFi network
-- **Manual Network Switching**: User must manually switch from OBD WiFi to home WiFi to transmit
+- **Manual Network Switching**: User manually switches from OBD WiFi to home WiFi to transmit
 - **Connectivity Verification**: Always checks for internet connectivity before attempting transmission
 - **Seamless Operation**: Allows alternating between OBD WiFi connection and home WiFi for data upload
-- **Best for Wireless OBD**: Solves the problem where wireless OBD readers prevent simultaneous home WiFi connection
 
-**How it works with WiFi OBD adapters:**
+**How it works (Manual):**
 1. Device connects to OBD adapter's WiFi network to collect vehicle data
 2. Plugin buffers the OBD data locally while connected to OBD WiFi
 3. Plugin periodically scans for home WiFi network in range (every 30 seconds)
@@ -114,10 +117,30 @@ In SSID in range mode, the plugin detects when your home WiFi network is within 
 6. Wait a few seconds for stable connection and internet connectivity
 7. Plugin automatically transmits all buffered data to Home Assistant
 8. After successful transmission, **user manually switches** back to OBD WiFi to continue data collection
-9. When leaving home range, wait a few seconds for stable OBD connection before switching back
+
+#### Automatic Switching Mode (New!)
+Enable automatic WiFi switching for truly hands-free operation:
+- **Automatic Detection**: Plugin detects both home and OBD WiFi networks
+- **Smart Switching**: Automatically switches to home WiFi when in range and data needs transmission
+- **Auto Return**: Automatically switches back to OBD WiFi after transmission completes
+- **Requires Configuration**: Both Home WiFi SSID and OBD WiFi SSID must be configured
+
+**How it works (Automatic):**
+1. Configure both "Home WiFi SSID" and "OBD WiFi SSID" in settings
+2. Enable "Enable Auto WiFi Switching" option
+3. Plugin automatically connects to OBD WiFi to collect vehicle data
+4. Data is buffered locally while connected to OBD WiFi
+5. When home WiFi is detected in range AND buffered data exists:
+   - **Automatically switches** to home WiFi
+   - Waits 5 seconds for connection to stabilize
+   - Transmits all buffered data to Home Assistant
+   - **Automatically switches** back to OBD WiFi
+6. When leaving home range, automatically reconnects to OBD WiFi
 
 **Important notes:**
-- Transmission only occurs when **actively connected** to home WiFi with internet access, not just when in range
+- Automatic switching requires `CHANGE_WIFI_STATE` permission (already included)
+- Both WiFi networks must be saved in device settings before automatic switching works
+- Transmission only occurs when actively connected to home WiFi with internet access
 - The plugin verifies internet connectivity before every transmission attempt
 - Failed transmissions are logged with detailed error messages for troubleshooting
 - On Android 6.0+, location permission is required for WiFi scanning functionality

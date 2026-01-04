@@ -6,6 +6,7 @@ import android.content.SharedPreferences;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.wifi.ScanResult;
+import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
@@ -67,6 +68,8 @@ public class HomeAssistantPlugin extends Plugin
     public static final String PREF_HA_URL = "ha_url";
     public static final String PREF_HA_TOKEN = "ha_token";
     public static final String PREF_HA_SSID = "ha_ssid";
+    public static final String PREF_HA_OBD_SSID = "ha_obd_ssid";
+    public static final String PREF_HA_AUTO_SWITCH = "ha_auto_switch";
     public static final String PREF_HA_UPDATE_INTERVAL = "ha_update_interval";
     public static final String PREF_HA_TRANSMISSION_MODE = "ha_transmission_mode";
     public static final String PREF_HA_ENTITY_PREFIX = "ha_entity_prefix";
@@ -85,14 +88,22 @@ public class HomeAssistantPlugin extends Plugin
     private final Map<String, String> dataCache = new HashMap<>();
     private static final int MSG_SEND_UPDATE = 1;
     private static final int MSG_CHECK_WIFI = 2;
+    private static final int MSG_SWITCH_TO_HOME = 3;
+    private static final int MSG_SWITCH_TO_OBD = 4;
     private long updateInterval = 5000; // Default 5 seconds
     private long wifiCheckInterval = 30000; // Check WiFi every 30 seconds
+    private long switchDelay = 5000; // Wait 5 seconds for stable connection after switch
     private String transmissionMode = "realtime";
     private String targetSSID = "";
+    private String obdSSID = "";
+    private boolean autoSwitch = false;
     
     // WiFi state tracking
     private boolean isHomeWifiInRange = false;
     private boolean isConnectedToHomeWifi = false;
+    private boolean isOBDWifiInRange = false;
+    private boolean isSwitchingNetwork = false;
+    private boolean hasPendingTransmission = false;
 
     @Override
     public void onCreate() {
@@ -187,6 +198,12 @@ public class HomeAssistantPlugin extends Plugin
             checkWifiState();
             scheduleWifiCheck();
             return true;
+        } else if (msg.what == MSG_SWITCH_TO_HOME) {
+            performNetworkSwitch(targetSSID, true);
+            return true;
+        } else if (msg.what == MSG_SWITCH_TO_OBD) {
+            performNetworkSwitch(obdSSID, false);
+            return true;
         }
         return false;
     }
@@ -211,13 +228,26 @@ public class HomeAssistantPlugin extends Plugin
             return;
         }
 
-        // Always check if connected to target WiFi (needed for both modes)
+        // Always check if connected to home WiFi (needed for both modes)
         isConnectedToHomeWifi = isConnectedToSSID(targetSSID);
         
         // Check if target WiFi is in range (only needed for ssid_in_range mode)
         if ("ssid_in_range".equals(transmissionMode)) {
             isHomeWifiInRange = isSSIDInRange(targetSSID);
-            Log.d(TAG, "WiFi state - Home in range: " + isHomeWifiInRange + ", Connected: " + isConnectedToHomeWifi);
+            
+            // Also check OBD WiFi state if auto-switching is enabled
+            if (autoSwitch && obdSSID != null && !obdSSID.isEmpty()) {
+                isOBDWifiInRange = isSSIDInRange(obdSSID);
+            }
+            
+            Log.d(TAG, "WiFi state - Home in range: " + isHomeWifiInRange + 
+                       ", Connected: " + isConnectedToHomeWifi + 
+                       ", OBD in range: " + isOBDWifiInRange);
+            
+            // Handle automatic WiFi switching
+            if (autoSwitch && !isSwitchingNetwork) {
+                handleAutoSwitch();
+            }
         } else if ("ssid_connected".equals(transmissionMode)) {
             Log.d(TAG, "WiFi state - Connected: " + isConnectedToHomeWifi);
         }
@@ -292,6 +322,121 @@ public class HomeAssistantPlugin extends Plugin
         }
 
         return false;
+    }
+
+    /**
+     * Handle automatic WiFi switching logic for SSID in Range mode
+     */
+    private void handleAutoSwitch() {
+        // Check if we have buffered data to transmit
+        boolean hasDataToSend = false;
+        synchronized (dataCache) {
+            hasDataToSend = !dataCache.isEmpty();
+        }
+        
+        // Decision logic for automatic switching
+        if (hasDataToSend && isHomeWifiInRange && !isConnectedToHomeWifi) {
+            // We have data to send and home WiFi is in range but not connected
+            Log.i(TAG, "Auto-switch: Switching to home WiFi to transmit buffered data");
+            hasPendingTransmission = true;
+            handler.sendEmptyMessage(MSG_SWITCH_TO_HOME);
+        } else if (hasPendingTransmission && isConnectedToHomeWifi) {
+            // We switched to home WiFi, transmission should happen automatically
+            // After successful transmission, switch back to OBD WiFi
+            Log.i(TAG, "Auto-switch: Connected to home WiFi, data transmission will occur");
+            hasPendingTransmission = false;
+            
+            // Schedule switch back to OBD WiFi after transmission completes
+            // Give time for transmission to complete
+            handler.sendEmptyMessageDelayed(MSG_SWITCH_TO_OBD, switchDelay * 2);
+        } else if (!isHomeWifiInRange && isOBDWifiInRange && !isConnectedToSSID(obdSSID)) {
+            // Home WiFi not in range, OBD WiFi is available but not connected
+            Log.i(TAG, "Auto-switch: Switching back to OBD WiFi to continue data collection");
+            handler.sendEmptyMessage(MSG_SWITCH_TO_OBD);
+        }
+    }
+
+    /**
+     * Perform network switch to specified SSID
+     * Note: Requires CHANGE_WIFI_STATE permission
+     */
+    private void performNetworkSwitch(String ssid, boolean isHomeNetwork) {
+        if (wifiManager == null || ssid == null || ssid.isEmpty()) {
+            Log.w(TAG, "Cannot switch network - WiFi manager not available or SSID empty");
+            return;
+        }
+        
+        isSwitchingNetwork = true;
+        String ssidClean = ssid.replace("\"", "");
+        
+        try {
+            Log.i(TAG, "Attempting to switch to network: " + ssidClean);
+            
+            // Get list of configured networks
+            List<WifiConfiguration> configuredNetworks = wifiManager.getConfiguredNetworks();
+            if (configuredNetworks == null) {
+                Log.e(TAG, "Could not get configured networks - may need CHANGE_WIFI_STATE permission");
+                isSwitchingNetwork = false;
+                return;
+            }
+            
+            // Find the network configuration for the target SSID
+            int networkId = -1;
+            for (WifiConfiguration config : configuredNetworks) {
+                String configSSID = config.SSID.replace("\"", "");
+                if (configSSID.equals(ssidClean)) {
+                    networkId = config.networkId;
+                    break;
+                }
+            }
+            
+            if (networkId == -1) {
+                Log.w(TAG, "Network " + ssidClean + " not found in configured networks. Please connect to it manually first.");
+                isSwitchingNetwork = false;
+                return;
+            }
+            
+            // Disconnect from current network
+            wifiManager.disconnect();
+            
+            // Enable the target network
+            boolean enabled = wifiManager.enableNetwork(networkId, true);
+            if (!enabled) {
+                Log.e(TAG, "Failed to enable network: " + ssidClean);
+                isSwitchingNetwork = false;
+                return;
+            }
+            
+            // Reconnect to the network
+            boolean reconnected = wifiManager.reconnect();
+            if (!reconnected) {
+                Log.e(TAG, "Failed to reconnect to network: " + ssidClean);
+                isSwitchingNetwork = false;
+                return;
+            }
+            
+            Log.i(TAG, "Successfully initiated switch to: " + ssidClean + ". Waiting for connection to stabilize...");
+            
+            // Wait for connection to stabilize before marking switch as complete
+            handler.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    isSwitchingNetwork = false;
+                    if (isHomeNetwork && isConnectedToHomeWifi) {
+                        Log.i(TAG, "Successfully connected to home WiFi, ready for transmission");
+                    } else if (!isHomeNetwork) {
+                        Log.i(TAG, "Successfully switched to OBD WiFi, resuming data collection");
+                    }
+                }
+            }, switchDelay);
+            
+        } catch (SecurityException e) {
+            Log.e(TAG, "Security exception during network switch - CHANGE_WIFI_STATE permission required", e);
+            isSwitchingNetwork = false;
+        } catch (Exception e) {
+            Log.e(TAG, "Error switching network", e);
+            isSwitchingNetwork = false;
+        }
     }
 
     /**
@@ -537,9 +682,26 @@ public class HomeAssistantPlugin extends Plugin
                 
             case PREF_HA_SSID:
                 targetSSID = sharedPreferences.getString(key, "");
-                Log.d(TAG, "Target SSID changed to: " + targetSSID);
+                Log.d(TAG, "Home SSID changed to: " + targetSSID);
                 // Check WiFi state immediately when SSID changes
                 checkWifiState();
+                break;
+                
+            case PREF_HA_OBD_SSID:
+                obdSSID = sharedPreferences.getString(key, "");
+                Log.d(TAG, "OBD SSID changed to: " + obdSSID);
+                // Check WiFi state immediately when SSID changes
+                checkWifiState();
+                break;
+                
+            case PREF_HA_AUTO_SWITCH:
+                autoSwitch = sharedPreferences.getBoolean(key, false);
+                Log.d(TAG, "Auto-switch changed to: " + autoSwitch);
+                if (autoSwitch) {
+                    if (targetSSID.isEmpty() || obdSSID.isEmpty()) {
+                        Log.w(TAG, "Auto-switch enabled but SSIDs not fully configured");
+                    }
+                }
                 break;
                 
             case ITEMS_SELECTED:
@@ -561,13 +723,15 @@ public class HomeAssistantPlugin extends Plugin
     /**
      * Load all preferences on initialization
      * Note: Only loads preferences that require special processing on startup.
-     * Other preferences (PREF_HA_URL, PREF_HA_TOKEN, PREF_HA_SSID, etc.) are 
+     * Other preferences (PREF_HA_URL, PREF_HA_TOKEN, etc.) are 
      * accessed directly when needed and don't require initialization.
      */
     private void loadPreferences(SharedPreferences prefs) {
         onSharedPreferenceChanged(prefs, PREF_HA_UPDATE_INTERVAL);
         onSharedPreferenceChanged(prefs, PREF_HA_TRANSMISSION_MODE);
         onSharedPreferenceChanged(prefs, PREF_HA_SSID);
+        onSharedPreferenceChanged(prefs, PREF_HA_OBD_SSID);
+        onSharedPreferenceChanged(prefs, PREF_HA_AUTO_SWITCH);
         onSharedPreferenceChanged(prefs, ITEMS_SELECTED);
         onSharedPreferenceChanged(prefs, ITEMS_KNOWN);
     }

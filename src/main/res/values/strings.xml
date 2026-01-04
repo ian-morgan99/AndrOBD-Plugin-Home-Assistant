@@ -13,8 +13,12 @@
     <string name="ha_token_description">Long-lived access token (optional, required for /api/states endpoints)</string>
     <string name="ha_transmission_mode">Transmission Mode</string>
     <string name="ha_transmission_mode_description">Choose when to send data to Home Assistant</string>
-    <string name="ha_ssid">Target WiFi SSID</string>
-    <string name="ha_ssid_description">Home WiFi network name - used for SSID-based transmission modes</string>
+    <string name="ha_ssid">Home WiFi SSID</string>
+    <string name="ha_ssid_description">Home WiFi network name - for automatic switching and transmission</string>
+    <string name="ha_obd_ssid">OBD WiFi SSID</string>
+    <string name="ha_obd_ssid_description">OBD adapter WiFi network name - for automatic switching (required for SSID in Range mode)</string>
+    <string name="ha_auto_switch">Enable Auto WiFi Switching</string>
+    <string name="ha_auto_switch_description">Automatically switch between OBD and Home WiFi (requires both SSIDs configured)</string>
     <string name="ha_update_interval">Update Interval (ms)</string>
     <string name="ha_update_interval_description">How often to send data (milliseconds, e.g., 5000 = 5 seconds)</string>
     <string name="data_items">Data Items</string>
