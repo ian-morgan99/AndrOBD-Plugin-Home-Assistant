@@ -70,8 +70,9 @@ Alternatively, you can use the REST API with a long-lived access token:
 - **Bearer Token**: Long-lived access token (required for API endpoints, optional for webhooks)
 - **Transmission Mode**: Choose between:
   - **Real-time**: Send data continuously while connected to OBD
-  - **SSID Triggered**: Only send data when connected to specific WiFi network
-- **Target WiFi SSID**: The network name to trigger transmission (for SSID-triggered mode)
+  - **SSID Connected**: Only send data when connected to specific WiFi network
+  - **SSID in Range**: Send data when home WiFi is detected in range (ideal for WiFi OBD adapters)
+- **Target WiFi SSID**: The network name to monitor (for SSID-based transmission modes)
 - **Update Interval**: How often to send data in milliseconds (default: 5000ms = 5 seconds)
 - **Data Items**: Select specific OBD parameters to publish (leave empty to publish all)
 
@@ -88,13 +89,30 @@ In real-time mode, the plugin sends OBD data to Home Assistant continuously at t
 - Home setups with VPN or local network access
 - Monitoring vehicle data while parked at home
 - Real-time dashboards and automations
+- USB or Bluetooth OBD connections that don't interfere with WiFi
 
-### SSID-Triggered Mode
-In SSID-triggered mode, the plugin buffers data and only transmits when the Android device connects to your specified WiFi network. This is ideal for:
+### SSID Connected Mode
+In SSID connected mode, the plugin buffers data and only transmits when the Android device is actively connected to your specified WiFi network. This is ideal for:
 - Vehicles with Android head units
 - Mobile phones that travel with the vehicle
 - Reducing mobile data usage
 - Automatic synchronization when arriving home
+
+### SSID in Range Mode (Recommended for WiFi OBD Adapters)
+In SSID in range mode, the plugin detects when your home WiFi network is within range and can transmit data. This mode is specifically designed for wireless OBD adapters that occupy the device's WiFi connection. Key features:
+- **Smart WiFi Detection**: Continuously scans for your home WiFi network
+- **Automatic Switching**: When home WiFi is detected in range, the device can switch connections to transmit buffered data
+- **Seamless Operation**: Allows alternating between OBD WiFi connection and home WiFi for data upload
+- **Best for Wireless OBD**: Solves the problem where wireless OBD readers prevent simultaneous home WiFi connection
+
+**How it works with WiFi OBD adapters:**
+1. Device connects to OBD adapter's WiFi network to collect vehicle data
+2. Plugin buffers the OBD data locally
+3. Plugin periodically scans for home WiFi network in range
+4. When home WiFi is detected, you can switch connections to upload buffered data
+5. After upload, reconnect to OBD WiFi to continue data collection
+
+**Note**: On Android 6.0+, location permission is required for WiFi scanning functionality.
 
 ## Data Format
 
@@ -192,10 +210,12 @@ automation:
 4. Look at AndrOBD logs for connection errors
 5. Ensure the plugin is enabled in AndrOBD settings
 
-### SSID-triggered mode not working
+### SSID-based modes not working
 1. Ensure the SSID is entered exactly as it appears in WiFi settings
-2. Check that WiFi permissions are granted to the plugin
-3. Verify you're connected to the correct network
+2. Check that WiFi and location permissions are granted to the plugin (required for WiFi scanning on Android 6.0+)
+3. Verify you're connected to the correct network (for SSID Connected mode)
+4. For SSID in Range mode, ensure WiFi is enabled on the device
+5. Check that the home WiFi network has sufficient signal strength to be detected
 
 ### High data usage
 1. Increase the update interval (e.g., from 5000ms to 10000ms)
