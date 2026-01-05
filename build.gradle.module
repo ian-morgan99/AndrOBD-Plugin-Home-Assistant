@@ -5,7 +5,7 @@ android {
     defaultConfig {
         applicationId 'com.fr3ts0n.androbd.plugin.homeassistant'
         minSdkVersion 15
-        targetSdkVersion 25
+        targetSdkVersion 33
         vectorDrawables.useSupportLibrary = true
         versionCode 10000
         versionName 'V1.0.0'

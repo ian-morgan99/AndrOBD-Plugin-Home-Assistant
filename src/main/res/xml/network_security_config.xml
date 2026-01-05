@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- 
+        Default configuration: HTTPS required for all external domains
+        This protects bearer tokens and vehicle data from interception
+    -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <!-- Trust system CAs for standard HTTPS -->
+            <certificates src="system" />
+            <!-- Trust user-added CAs for self-signed certificates -->
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+    
+    <!-- 
+        Allow HTTP for localhost and .local domains only
+        For private IP addresses (192.168.x.x, 10.x.x.x, 172.16-31.x.x):
+        - Use HTTPS (recommended), OR
+        - Users must specify android:usesCleartextTraffic="true" in their build or
+        - Add their specific domain/IP pattern here
+        
+        This balance provides security by default while allowing local development
+    -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+        <domain includeSubdomains="true">.local</domain>
+    </domain-config>
+</network-security-config>

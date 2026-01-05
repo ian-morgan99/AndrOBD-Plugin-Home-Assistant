@@ -2,12 +2,18 @@
 
 This extension plugin allows AndrOBD to publish OBD-II vehicle data to Home Assistant via webhooks or REST API.
 
+> **Latest Update**: Fixed installation package conflict issue and added modern security/privacy features. See [CHANGELOG.md](CHANGELOG.md) for details.
+
 ## Features
 
 - **Real-time Data Transmission**: Continuously send OBD data to Home Assistant as it's collected
 - **SSID-Triggered Mode**: Buffer data and transmit only when connected to a specific WiFi network
 - **Secure Communication**: Support for HTTPS and Bearer token authentication
+  - **HTTPS enforced by default** to protect bearer tokens and vehicle data
+  - Support for self-signed certificates
+  - HTTP allowed only for localhost and .local domains
 - **Selective Data Publishing**: Choose which OBD data items to publish
+- **Privacy-Focused**: Location permission only used for WiFi scanning, not location tracking
 - **Comprehensive Data**: Sends key vehicle metrics including:
   - Engine RPM
   - Vehicle speed
@@ -290,11 +296,19 @@ automation:
 
 ## Security Considerations
 
-- Always use HTTPS URLs to ensure encrypted communication
-- Use strong, unique Bearer tokens
+This plugin implements several security features to protect your data. For detailed information, see [SECURITY.md](SECURITY.md).
+
+**Quick Security Tips:**
+- **Always use HTTPS URLs** to ensure encrypted communication (enforced by default)
+- Use strong, unique Bearer tokens and rotate them regularly
 - Consider using a VPN for remote access instead of exposing Home Assistant to the internet
-- Regularly rotate access tokens
 - Monitor Home Assistant logs for unexpected access
+- For local networks, use mDNS `.local` domains (e.g., `https://homeassistant.local:8123`)
+
+**Privacy:**
+- Location permission is **only** used for WiFi scanning, not for tracking your location
+- No data collection or analytics - all data goes directly to YOUR Home Assistant instance
+- Sensitive credentials are excluded from Android backups
 
 ## Example Use Cases
 
