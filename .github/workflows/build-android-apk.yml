@@ -79,7 +79,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Find and upload all APK files (both debug and release)
+          # Find and upload all APK files from both debug and release builds
+          # Searches in build/outputs/apk (root) and */build/outputs/apk (modules)
           # Use -print0 and read -d '' for safe handling of filenames with spaces
           find build/outputs/apk */build/outputs/apk -name "*.apk" -type f -print0 2>/dev/null | while IFS= read -r -d '' apk_path; do
             echo "Uploading $apk_path to release..."
