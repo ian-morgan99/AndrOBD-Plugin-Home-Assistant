@@ -1,9 +1,11 @@
 name: Build Android APKs
 
-# Trigger the workflow on push to any branch or on pull requests
+# Trigger the workflow on push to any branch, on pull requests, or on release creation
 on:
   push:
   pull_request:
+  release:
+    types: [created, published]
 
 jobs:
   build:
@@ -12,7 +14,7 @@ jobs:
     
     # Limit permissions for security (principle of least privilege)
     permissions:
-      contents: read  # Required to checkout the repository
+      contents: write  # Required to checkout the repository and upload release assets
 
     steps:
       # Step 1: Check out the repository code with submodules
@@ -70,3 +72,24 @@ jobs:
             build/outputs/apk/release/*.apk
             */build/outputs/apk/release/*.apk
           retention-days: 30
+
+      # Step 10: Upload APKs to GitHub Release (only when triggered by a release)
+      - name: Upload APKs to Release
+        if: github.event_name == 'release'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Find all APK files
+          find build/outputs/apk/release -name "*.apk" -type f -exec basename {} \; | while read apk_file; do
+            find . -name "$apk_file" -path "*/build/outputs/apk/release/*" -type f | while read apk_path; do
+              echo "Uploading $apk_path to release..."
+              gh release upload ${{ github.event.release.tag_name }} "$apk_path" --clobber
+            done
+          done
+          
+          find build/outputs/apk/debug -name "*.apk" -type f -exec basename {} \; 2>/dev/null | while read apk_file; do
+            find . -name "$apk_file" -path "*/build/outputs/apk/debug/*" -type f | while read apk_path; do
+              echo "Uploading $apk_path to release..."
+              gh release upload ${{ github.event.release.tag_name }} "$apk_path" --clobber
+            done
+          done
