@@ -80,13 +80,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Find and upload all APK files (both debug and release)
-          find build/outputs/apk -name "*.apk" -type f 2>/dev/null | while read apk_path; do
-            echo "Uploading $apk_path to release..."
-            gh release upload ${{ github.event.release.tag_name }} "$apk_path" --clobber
-          done
-          
-          # Also check for APKs in module subdirectories
-          find */build/outputs/apk -name "*.apk" -type f 2>/dev/null | while read apk_path; do
+          # Use -print0 and read -d '' for safe handling of filenames with spaces
+          find build/outputs/apk */build/outputs/apk -name "*.apk" -type f -print0 2>/dev/null | while IFS= read -r -d '' apk_path; do
             echo "Uploading $apk_path to release..."
             gh release upload ${{ github.event.release.tag_name }} "$apk_path" --clobber
           done
