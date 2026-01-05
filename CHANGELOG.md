@@ -27,8 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Permission documentation**: Added detailed comments explaining why each permission is needed
 - **Privacy declarations**: Added hardware feature declarations to clarify optional features
-  - Location, GPS, and WiFi are marked as not required
-  - App can be installed on devices without these features
+  - WiFi hardware is marked as not required
+  - App can be installed on devices without WiFi hardware
 - **ACCESS_COARSE_LOCATION permission**: Added for better Android compatibility
   - Complements ACCESS_FINE_LOCATION for WiFi scanning
   - Required by some Android versions for WiFi network detection
