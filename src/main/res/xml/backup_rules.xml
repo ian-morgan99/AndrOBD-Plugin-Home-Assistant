@@ -2,7 +2,7 @@
 <full-backup-content>
     <!-- Exclude sensitive authentication data from backups -->
     <!-- File pattern matches default SharedPreferences created by PreferenceManager.getDefaultSharedPreferences() -->
-    <!-- which creates a file named: {packageName}_preferences.xml -->
+    <!-- which, for this rule, is referenced using the Gradle ${applicationId} as: ${applicationId}_preferences.xml -->
     <exclude domain="sharedpref" path="${applicationId}_preferences.xml"/>
     
     <!-- Include other app data -->
