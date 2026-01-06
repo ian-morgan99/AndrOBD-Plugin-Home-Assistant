@@ -12,9 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Release APKs now use debug signing configuration to ensure proper signing
   - This resolves "invalid package" warnings that prevented APK installation on Android devices
   - Previously, release builds were missing signing configuration, causing installation failures
-- **Package conflict preventing installation**: Fixed AndroidManifest.xml component declarations by adding dot prefix to class names
-  - This resolves installation failures caused by Android not properly resolving component class names
-  - All components (receiver, service, activity) now use relative class name notation (e.g., `.HomeAssistantPluginReceiver`)
+- **Package conflict preventing installation**: Fixed AndroidManifest.xml manifest merger conflicts
+  - Added `tools:replace` directive to resolve conflicts between app and library manifest attributes
+  - This fixes installation failures caused by conflicting `allowBackup`, `label`, `theme`, and `icon` attributes between the app and plugin library
+  - The manifest merger now correctly uses the app's values instead of causing conflicts during installation
 
 ### Security
 - **HTTPS enforcement**: Added network security configuration to enforce HTTPS by default
