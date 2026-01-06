@@ -181,8 +181,10 @@ public class HomeAssistantPlugin extends Plugin
             }
             
             // Schedule update if not already scheduled
-            if (handler != null && !handler.hasMessages(MSG_SEND_UPDATE)) {
-                handler.sendEmptyMessageDelayed(MSG_SEND_UPDATE, updateInterval);
+            if (handler != null) {
+                if (!handler.hasMessages(MSG_SEND_UPDATE)) {
+                    handler.sendEmptyMessageDelayed(MSG_SEND_UPDATE, updateInterval);
+                }
             }
         }
     }
@@ -214,9 +216,11 @@ public class HomeAssistantPlugin extends Plugin
      */
     private void scheduleWifiCheck() {
         // Only schedule if we need to monitor WiFi
-        if (handler != null && ("ssid_in_range".equals(transmissionMode) || "ssid_connected".equals(transmissionMode))) {
-            handler.removeMessages(MSG_CHECK_WIFI);
-            handler.sendEmptyMessageDelayed(MSG_CHECK_WIFI, wifiCheckInterval);
+        if (handler != null) {
+            if ("ssid_in_range".equals(transmissionMode) || "ssid_connected".equals(transmissionMode)) {
+                handler.removeMessages(MSG_CHECK_WIFI);
+                handler.sendEmptyMessageDelayed(MSG_CHECK_WIFI, wifiCheckInterval);
+            }
         }
     }
 
