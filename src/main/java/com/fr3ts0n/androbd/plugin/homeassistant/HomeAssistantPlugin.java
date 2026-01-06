@@ -111,6 +111,9 @@ public class HomeAssistantPlugin extends Plugin
         super.onCreate();
         Log.d(TAG, "Plugin created");
 
+        // Initialize handler first - required by preference loading
+        handler = new Handler(Looper.getMainLooper(), this);
+
         prefs = PreferenceManager.getDefaultSharedPreferences(this);
         prefs.registerOnSharedPreferenceChangeListener(this);
         
@@ -127,9 +130,6 @@ public class HomeAssistantPlugin extends Plugin
                 .writeTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(30, TimeUnit.SECONDS)
                 .build();
-
-        // Initialize handler
-        handler = new Handler(Looper.getMainLooper(), this);
         
         // Start WiFi monitoring if needed
         scheduleWifiCheck();
@@ -181,8 +181,10 @@ public class HomeAssistantPlugin extends Plugin
             }
             
             // Schedule update if not already scheduled
-            if (!handler.hasMessages(MSG_SEND_UPDATE)) {
-                handler.sendEmptyMessageDelayed(MSG_SEND_UPDATE, updateInterval);
+            if (handler != null) {
+                if (!handler.hasMessages(MSG_SEND_UPDATE)) {
+                    handler.sendEmptyMessageDelayed(MSG_SEND_UPDATE, updateInterval);
+                }
             }
         }
     }
@@ -214,9 +216,11 @@ public class HomeAssistantPlugin extends Plugin
      */
     private void scheduleWifiCheck() {
         // Only schedule if we need to monitor WiFi
-        if ("ssid_in_range".equals(transmissionMode) || "ssid_connected".equals(transmissionMode)) {
-            handler.removeMessages(MSG_CHECK_WIFI);
-            handler.sendEmptyMessageDelayed(MSG_CHECK_WIFI, wifiCheckInterval);
+        if (handler != null) {
+            if ("ssid_in_range".equals(transmissionMode) || "ssid_connected".equals(transmissionMode)) {
+                handler.removeMessages(MSG_CHECK_WIFI);
+                handler.sendEmptyMessageDelayed(MSG_CHECK_WIFI, wifiCheckInterval);
+            }
         }
     }
 
@@ -329,6 +333,10 @@ public class HomeAssistantPlugin extends Plugin
      * Handle automatic WiFi switching logic for SSID in Range mode
      */
     private void handleAutoSwitch() {
+        if (handler == null) {
+            return;
+        }
+        
         // Check if we have buffered data to transmit
         boolean hasDataToSend = false;
         synchronized (dataCache) {
@@ -366,8 +374,8 @@ public class HomeAssistantPlugin extends Plugin
      * or WifiNetworkSuggestion APIs, but these require higher minSdkVersion.
      */
     private void performNetworkSwitch(String ssid, boolean isHomeNetwork) {
-        if (wifiManager == null || ssid == null || ssid.isEmpty()) {
-            Log.w(TAG, "Cannot switch network - WiFi manager not available or SSID empty");
+        if (handler == null || wifiManager == null || ssid == null || ssid.isEmpty()) {
+            Log.w(TAG, "Cannot switch network - handler, WiFi manager not available or SSID empty");
             return;
         }
         
@@ -685,7 +693,9 @@ public class HomeAssistantPlugin extends Plugin
                 transmissionMode = sharedPreferences.getString(key, "realtime");
                 Log.d(TAG, "Transmission mode changed to: " + transmissionMode);
                 // Reschedule WiFi checking based on new mode
-                handler.removeMessages(MSG_CHECK_WIFI);
+                if (handler != null) {
+                    handler.removeMessages(MSG_CHECK_WIFI);
+                }
                 scheduleWifiCheck();
                 // Check WiFi state immediately
                 checkWifiState();
