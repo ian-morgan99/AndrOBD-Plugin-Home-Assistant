@@ -60,6 +60,7 @@ jobs:
           path: |
             build/outputs/apk/debug/*.apk
             */build/outputs/apk/debug/*.apk
+          if-no-files-found: error
           retention-days: 30
 
       # Step 9: Upload Release APKs as artifacts
@@ -71,6 +72,7 @@ jobs:
           path: |
             build/outputs/apk/release/*.apk
             */build/outputs/apk/release/*.apk
+          if-no-files-found: error
           retention-days: 30
 
       # Step 10: Upload APKs to GitHub Release (only when a release is published)
