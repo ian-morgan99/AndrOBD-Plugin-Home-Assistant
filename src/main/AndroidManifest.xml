@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Network permissions for communicating with Home Assistant -->
     <uses-permission android:name="android.permission.INTERNET"/>
@@ -23,7 +24,8 @@
         android:networkSecurityConfig="@xml/network_security_config"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
-        android:theme="@style/AppTheme.Dark">
+        android:theme="@style/AppTheme.Dark"
+        tools:replace="android:allowBackup,android:label">
 
         <receiver android:name=".HomeAssistantPluginReceiver"
             android:exported="true"
