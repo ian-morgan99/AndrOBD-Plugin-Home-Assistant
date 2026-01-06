@@ -375,7 +375,7 @@ public class HomeAssistantPlugin extends Plugin
      */
     private void performNetworkSwitch(String ssid, boolean isHomeNetwork) {
         if (handler == null || wifiManager == null || ssid == null || ssid.isEmpty()) {
-            Log.w(TAG, "Cannot switch network - handler or WiFi manager not available or SSID empty");
+            Log.w(TAG, "Cannot switch network - handler, WiFi manager not available or SSID empty");
             return;
         }
         
