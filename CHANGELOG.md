@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Invalid package warning during installation**: Added signing configuration to release builds
+  - Release APKs now use debug signing configuration to ensure proper signing
+  - This resolves "invalid package" warnings that prevented APK installation on Android devices
+  - Previously, release builds were missing signing configuration, causing installation failures
 - **Package conflict preventing installation**: Fixed AndroidManifest.xml component declarations by adding dot prefix to class names
   - This resolves installation failures caused by Android not properly resolving component class names
   - All components (receiver, service, activity) now use relative class name notation (e.g., `.HomeAssistantPluginReceiver`)

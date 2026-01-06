@@ -73,9 +73,9 @@ jobs:
             */build/outputs/apk/release/*.apk
           retention-days: 30
 
-      # Step 10: Upload APKs to GitHub Release (only when triggered by a release)
+      # Step 10: Upload APKs to GitHub Release (only when a release is published)
       - name: Upload APKs to Release
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' && github.event.action == 'published'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

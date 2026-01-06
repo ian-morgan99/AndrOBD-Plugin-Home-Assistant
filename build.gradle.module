@@ -17,6 +17,9 @@ android {
 
     buildTypes {
         release {
+            // Use debug signing for release builds to enable installation without custom keystore
+            // For production releases, replace with a proper release signing configuration
+            signingConfig signingConfigs.debug
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.txt'
         }
     }
