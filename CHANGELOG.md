@@ -41,5 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Provides best practices for secure configuration
   - Explains how to report security vulnerabilities
 
+## [1.0.8] - Previous Release
+(See git history for previous changes)
+
 ## [1.0.7] - Previous Release
 (See git history for previous changes)
