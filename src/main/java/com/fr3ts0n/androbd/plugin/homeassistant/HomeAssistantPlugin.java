@@ -190,6 +190,9 @@ public class HomeAssistantPlugin extends Plugin
         }
 
         // Determine current network state and appropriate icon/text
+        // Note: Priority order is important - home WiFi is checked first, then OBD WiFi.
+        // If home and OBD SSIDs are configured to be the same (not recommended), 
+        // the home icon will be displayed.
         int iconRes;
         String notificationText;
         
