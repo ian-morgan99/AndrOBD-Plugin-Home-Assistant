@@ -236,6 +236,9 @@ public class HomeAssistantPlugin extends Plugin
         super.onDestroy();
         Log.d(TAG, "Plugin destroyed");
         
+        // Stop foreground service and remove notification
+        stopForeground(true);
+        
         if (handler != null) {
             handler.removeCallbacksAndMessages(null);
         }
