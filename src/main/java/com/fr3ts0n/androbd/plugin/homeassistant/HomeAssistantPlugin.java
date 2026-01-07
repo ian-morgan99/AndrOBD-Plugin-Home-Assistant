@@ -182,6 +182,13 @@ public class HomeAssistantPlugin extends Plugin
             pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, 0);
         }
 
+        // Get WiFi info once at the beginning to avoid repeated system calls
+        WifiInfo wifiInfo = wifiManager != null ? wifiManager.getConnectionInfo() : null;
+        String currentSSID = wifiInfo != null ? wifiInfo.getSSID() : null;
+        if (currentSSID != null) {
+            currentSSID = currentSSID.replace("\"", "");
+        }
+
         // Determine current network state and appropriate icon/text
         int iconRes;
         String notificationText;
@@ -189,21 +196,16 @@ public class HomeAssistantPlugin extends Plugin
         if (isConnectedToHomeWifi) {
             iconRes = R.drawable.ic_notification_home;
             notificationText = getString(R.string.notification_text_home);
-        } else if (obdSSID != null && !obdSSID.isEmpty() && isConnectedToSSID(obdSSID)) {
+        } else if (obdSSID != null && !obdSSID.isEmpty() && currentSSID != null && 
+                   currentSSID.equals(obdSSID.replace("\"", ""))) {
             iconRes = R.drawable.ic_notification_car;
             notificationText = getString(R.string.notification_text_car);
+        } else if (currentSSID != null && !currentSSID.equals("<unknown ssid>")) {
+            iconRes = R.drawable.ic_notification_home; // Default to home icon for unknown WiFi
+            notificationText = getString(R.string.notification_text_other);
         } else {
-            // Check for other WiFi connections
-            WifiInfo wifiInfo = wifiManager != null ? wifiManager.getConnectionInfo() : null;
-            String currentSSID = wifiInfo != null ? wifiInfo.getSSID() : null;
-            
-            if (currentSSID != null && !currentSSID.equals("<unknown ssid>")) {
-                iconRes = R.drawable.ic_notification_home; // Default to home icon for unknown WiFi
-                notificationText = getString(R.string.notification_text_other);
-            } else {
-                iconRes = R.drawable.ic_notification_home; // Default icon
-                notificationText = getString(R.string.notification_text_disconnected);
-            }
+            iconRes = R.drawable.ic_notification_home; // Default icon
+            notificationText = getString(R.string.notification_text_disconnected);
         }
 
         Notification.Builder builder;
@@ -338,8 +340,8 @@ public class HomeAssistantPlugin extends Plugin
     private void checkWifiState() {
         if (targetSSID == null || targetSSID.isEmpty()) {
             // Still check connection state for notification even without targetSSID configured
-            if (wifiManager != null && wifiManager.getConnectionInfo() != null) {
-                WifiInfo wifiInfo = wifiManager.getConnectionInfo();
+            WifiInfo wifiInfo = wifiManager != null ? wifiManager.getConnectionInfo() : null;
+            if (wifiInfo != null) {
                 String currentSSID = wifiInfo.getSSID();
                 if (currentSSID != null) {
                     // Update notification regardless of which network we're connected to
