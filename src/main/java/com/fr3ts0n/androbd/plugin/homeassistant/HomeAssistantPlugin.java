@@ -1,5 +1,7 @@
 package com.fr3ts0n.androbd.plugin.homeassistant;
 
+import static android.app.Service.STOP_FOREGROUND_REMOVE;
+
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -135,6 +137,11 @@ public class HomeAssistantPlugin extends Plugin
         connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
         notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
 
+        // Log warning if critical services are unavailable
+        if (wifiManager == null) {
+            Log.w(TAG, "WifiManager is null - WiFi state detection will not work");
+        }
+
         // Initialize HTTP client
         httpClient = new OkHttpClient.Builder()
                 .connectTimeout(10, TimeUnit.SECONDS)
@@ -144,6 +151,9 @@ public class HomeAssistantPlugin extends Plugin
         
         // Create notification channel for Android O+
         createNotificationChannel();
+        
+        // Initialize WiFi state before creating notification to show accurate initial status
+        checkWifiState();
         
         // Start foreground service with notification
         startForeground(NOTIFICATION_ID, createNotification());
@@ -177,9 +187,11 @@ public class HomeAssistantPlugin extends Plugin
         PendingIntent pendingIntent;
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE);
+            pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, 
+                    PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         } else {
-            pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, 0);
+            pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, 
+                    PendingIntent.FLAG_UPDATE_CURRENT);
         }
 
         // Get WiFi info once at the beginning to avoid repeated system calls
@@ -188,6 +200,9 @@ public class HomeAssistantPlugin extends Plugin
         if (currentSSID != null) {
             currentSSID = currentSSID.replace("\"", "");
         }
+
+        // Clean OBD SSID once for consistent comparison
+        String cleanObdSSID = obdSSID != null ? obdSSID.replace("\"", "") : null;
 
         // Determine current network state and appropriate icon/text
         // Note: Priority order is important - home WiFi is checked first, then OBD WiFi.
@@ -199,8 +214,8 @@ public class HomeAssistantPlugin extends Plugin
         if (isConnectedToHomeWifi) {
             iconRes = R.drawable.ic_notification_home;
             notificationText = getString(R.string.notification_text_home);
-        } else if (obdSSID != null && !obdSSID.isEmpty() && currentSSID != null && 
-                   currentSSID.equals(obdSSID.replace("\"", ""))) {
+        } else if (cleanObdSSID != null && !cleanObdSSID.isEmpty() && currentSSID != null && 
+                   currentSSID.equals(cleanObdSSID)) {
             iconRes = R.drawable.ic_notification_car;
             notificationText = getString(R.string.notification_text_car);
         } else if (currentSSID != null && !currentSSID.equals("<unknown ssid>")) {
@@ -246,7 +261,11 @@ public class HomeAssistantPlugin extends Plugin
         Log.d(TAG, "Plugin destroyed");
         
         // Stop foreground service and remove notification
-        stopForeground(true);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            stopForeground(STOP_FOREGROUND_REMOVE);
+        } else {
+            stopForeground(true);
+        }
         
         if (handler != null) {
             handler.removeCallbacksAndMessages(null);
@@ -341,23 +360,35 @@ public class HomeAssistantPlugin extends Plugin
      * Check current WiFi state and update flags
      */
     private void checkWifiState() {
+        // Track if state changed to optimize notification updates
+        boolean stateChanged = false;
+        
         if (targetSSID == null || targetSSID.isEmpty()) {
-            // Still check connection state for notification even without targetSSID configured
-            WifiInfo wifiInfo = wifiManager != null ? wifiManager.getConnectionInfo() : null;
-            if (wifiInfo != null) {
-                String currentSSID = wifiInfo.getSSID();
-                if (currentSSID != null) {
-                    // Update notification regardless of which network we're connected to
-                    updateNotification();
+            // No home WiFi configured, but still check current connection for notification
+            // Don't perform expensive WiFi scans in this case
+            if (wifiManager != null) {
+                WifiInfo wifiInfo = wifiManager.getConnectionInfo();
+                if (wifiInfo != null) {
+                    String currentSSID = wifiInfo.getSSID();
+                    // Only update notification if we have WiFi info
+                    if (currentSSID != null) {
+                        stateChanged = true; // Update notification to show current state
+                    }
                 }
+            }
+            // Update notification once at the end if state changed
+            if (stateChanged) {
+                updateNotification();
             }
             return;
         }
 
-        // Always check if connected to home WiFi (needed for both modes)
+        // Always check if connected to home WiFi (needed for all modes)
+        boolean wasConnectedToHomeWifi = isConnectedToHomeWifi;
         isConnectedToHomeWifi = isConnectedToSSID(targetSSID);
+        stateChanged = (wasConnectedToHomeWifi != isConnectedToHomeWifi);
         
-        // Check if target WiFi is in range (only needed for ssid_in_range mode)
+        // Check if target WiFi is in range (only for ssid_in_range mode to avoid unnecessary scans)
         if ("ssid_in_range".equals(transmissionMode)) {
             isHomeWifiInRange = isSSIDInRange(targetSSID);
             
@@ -370,20 +401,16 @@ public class HomeAssistantPlugin extends Plugin
                        ", Connected: " + isConnectedToHomeWifi + 
                        ", OBD in range: " + isOBDWifiInRange);
             
-            // Update notification to reflect current state
-            updateNotification();
-            
             // Handle automatic WiFi switching
             if (autoSwitch && !isSwitchingNetwork) {
                 handleAutoSwitch();
             }
         } else if ("ssid_connected".equals(transmissionMode)) {
             Log.d(TAG, "WiFi state - Connected: " + isConnectedToHomeWifi);
-            
-            // Update notification to reflect current state
-            updateNotification();
-        } else {
-            // For realtime or other modes, still update notification
+        }
+        
+        // Update notification once at the end if state changed or for initial check
+        if (stateChanged || wasConnectedToHomeWifi == isConnectedToHomeWifi) {
             updateNotification();
         }
     }
@@ -567,14 +594,13 @@ public class HomeAssistantPlugin extends Plugin
                 public void run() {
                     isSwitchingNetwork = false;
                     // Update WiFi state to get current connection status
+                    // This will also update the notification
                     checkWifiState();
                     
                     if (isHomeNetwork && isConnectedToHomeWifi) {
                         Log.i(TAG, "Successfully connected to home WiFi, ready for transmission");
-                        updateNotification();
                     } else if (!isHomeNetwork && isConnectedToSSID(obdSSID)) {
                         Log.i(TAG, "Successfully switched to OBD WiFi, resuming data collection");
-                        updateNotification();
                     } else {
                         Log.w(TAG, "Network switch may not have completed successfully");
                     }
