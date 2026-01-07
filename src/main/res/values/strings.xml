@@ -42,4 +42,13 @@
     <string name="status_connecting">Connecting to Home Assistant…</string>
     <string name="status_connected">Connected to Home Assistant</string>
     <string name="status_error">Error connecting to Home Assistant</string>
+    
+    <!-- Notification messages -->
+    <string name="notification_channel_name">Network Status</string>
+    <string name="notification_channel_description">Shows current network connection status (car or home WiFi)</string>
+    <string name="notification_title">AndrOBD Home Assistant</string>
+    <string name="notification_text_home">Connected to Home WiFi</string>
+    <string name="notification_text_car">Connected to OBD WiFi</string>
+    <string name="notification_text_other">Connected to other network</string>
+    <string name="notification_text_disconnected">Not connected to WiFi</string>
 </resources>
