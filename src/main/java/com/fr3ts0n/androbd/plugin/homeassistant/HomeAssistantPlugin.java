@@ -192,14 +192,18 @@ public class HomeAssistantPlugin extends Plugin
         } else if (obdSSID != null && !obdSSID.isEmpty() && isConnectedToSSID(obdSSID)) {
             iconRes = R.drawable.ic_notification_car;
             notificationText = getString(R.string.notification_text_car);
-        } else if (wifiManager != null && wifiManager.getConnectionInfo() != null && 
-                   wifiManager.getConnectionInfo().getSSID() != null &&
-                   !wifiManager.getConnectionInfo().getSSID().equals("<unknown ssid>")) {
-            iconRes = R.drawable.ic_notification_home; // Default to home icon for unknown WiFi
-            notificationText = getString(R.string.notification_text_other);
         } else {
-            iconRes = R.drawable.ic_notification_home; // Default icon
-            notificationText = getString(R.string.notification_text_disconnected);
+            // Check for other WiFi connections
+            WifiInfo wifiInfo = wifiManager != null ? wifiManager.getConnectionInfo() : null;
+            String currentSSID = wifiInfo != null ? wifiInfo.getSSID() : null;
+            
+            if (currentSSID != null && !currentSSID.equals("<unknown ssid>")) {
+                iconRes = R.drawable.ic_notification_home; // Default to home icon for unknown WiFi
+                notificationText = getString(R.string.notification_text_other);
+            } else {
+                iconRes = R.drawable.ic_notification_home; // Default icon
+                notificationText = getString(R.string.notification_text_disconnected);
+            }
         }
 
         Notification.Builder builder;
@@ -312,6 +316,13 @@ public class HomeAssistantPlugin extends Plugin
 
     /**
      * Schedule periodic WiFi state checking
+     * WiFi checks are scheduled for all modes to:
+     * 1. Update network indicator notification in real-time
+     * 2. Support SSID-based transmission modes (ssid_connected, ssid_in_range)
+     * 3. Enable automatic network switching functionality
+     * 
+     * The check interval is 30 seconds, which is infrequent enough to minimize
+     * battery impact while keeping the notification reasonably current.
      */
     private void scheduleWifiCheck() {
         // Schedule WiFi checks to update notification
@@ -331,13 +342,8 @@ public class HomeAssistantPlugin extends Plugin
                 WifiInfo wifiInfo = wifiManager.getConnectionInfo();
                 String currentSSID = wifiInfo.getSSID();
                 if (currentSSID != null) {
-                    currentSSID = currentSSID.replace("\"", "");
-                    // Check if connected to OBD WiFi
-                    if (obdSSID != null && !obdSSID.isEmpty() && currentSSID.equals(obdSSID.replace("\"", ""))) {
-                        updateNotification();
-                    } else {
-                        updateNotification();
-                    }
+                    // Update notification regardless of which network we're connected to
+                    updateNotification();
                 }
             }
             return;
