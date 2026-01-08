@@ -1,5 +1,11 @@
 package com.fr3ts0n.androbd.plugin.homeassistant;
 
+import static android.app.Service.STOP_FOREGROUND_REMOVE;
+
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -9,6 +15,7 @@ import android.net.wifi.ScanResult;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -54,6 +61,10 @@ public class HomeAssistantPlugin extends Plugin
 
     private static final String TAG = "HomeAssistantPlugin";
     
+    // Notification constants
+    private static final String NOTIFICATION_CHANNEL_ID = "network_status_channel";
+    private static final int NOTIFICATION_ID = 1001;
+    
     // Static plugin info - required by PluginReceiver
     static final PluginInfo myInfo = new PluginInfo(
         "Home Assistant",
@@ -83,6 +94,7 @@ public class HomeAssistantPlugin extends Plugin
     private HashSet<String> mSelectedItems = new HashSet<>();
     private WifiManager wifiManager;
     private ConnectivityManager connectivityManager;
+    private NotificationManager notificationManager;
 
     // Data storage
     private final Map<String, String> dataCache = new HashMap<>();
@@ -123,6 +135,12 @@ public class HomeAssistantPlugin extends Plugin
         // Initialize WiFi and connectivity managers
         wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
         connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+
+        // Log warning if critical services are unavailable
+        if (wifiManager == null) {
+            Log.w(TAG, "WifiManager is null - WiFi state detection will not work");
+        }
 
         // Initialize HTTP client
         httpClient = new OkHttpClient.Builder()
@@ -131,14 +149,126 @@ public class HomeAssistantPlugin extends Plugin
                 .readTimeout(30, TimeUnit.SECONDS)
                 .build();
         
+        // Create notification channel for Android O+
+        createNotificationChannel();
+        
+        // Initialize WiFi state before creating notification to show accurate initial status
+        checkWifiState();
+        
+        // Start foreground service with notification
+        startForeground(NOTIFICATION_ID, createNotification());
+        
         // Start WiFi monitoring if needed
         scheduleWifiCheck();
+    }
+
+    /**
+     * Create notification channel for Android O and above
+     */
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            CharSequence name = getString(R.string.notification_channel_name);
+            String description = getString(R.string.notification_channel_description);
+            int importance = NotificationManager.IMPORTANCE_LOW;
+            NotificationChannel channel = new NotificationChannel(NOTIFICATION_CHANNEL_ID, name, importance);
+            channel.setDescription(description);
+            
+            if (notificationManager != null) {
+                notificationManager.createNotificationChannel(channel);
+            }
+        }
+    }
+
+    /**
+     * Create or update notification based on current network status
+     */
+    private Notification createNotification() {
+        Intent notificationIntent = new Intent(this, SettingsActivity.class);
+        PendingIntent pendingIntent;
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, 
+                    PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        } else {
+            pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, 
+                    PendingIntent.FLAG_UPDATE_CURRENT);
+        }
+
+        if (wifiManager == null) {
+            Log.w("HomeAssistantPlugin", "createNotification: wifiManager is null; notification will show disconnected state.");
+        }
+        // Get WiFi info once at the beginning to avoid repeated system calls
+        WifiInfo wifiInfo = wifiManager != null ? wifiManager.getConnectionInfo() : null;
+        String currentSSID = wifiInfo != null ? wifiInfo.getSSID() : null;
+        if (currentSSID != null) {
+            currentSSID = currentSSID.replace("\"", "");
+        }
+
+        // Clean OBD SSID once for consistent comparison
+        String cleanObdSSID = obdSSID != null ? obdSSID.replace("\"", "") : null;
+
+        // Determine current network state and appropriate icon/text
+        // Note: Priority order is important - home WiFi is checked first, then OBD WiFi.
+        // If home and OBD SSIDs are configured to be the same (not recommended), 
+        // the home icon will be displayed.
+        int iconRes;
+        String notificationText;
+        
+        if (isConnectedToHomeWifi) {
+            iconRes = R.drawable.ic_notification_home;
+            notificationText = getString(R.string.notification_text_home);
+        } else if (cleanObdSSID != null && !cleanObdSSID.isEmpty() && currentSSID != null && 
+                   currentSSID.equals(cleanObdSSID)) {
+            iconRes = R.drawable.ic_notification_car;
+            notificationText = getString(R.string.notification_text_car);
+        } else if (currentSSID != null && !currentSSID.equals("<unknown ssid>")) {
+            iconRes = R.drawable.ic_notification_home; // Default to home icon for unknown WiFi
+            notificationText = getString(R.string.notification_text_other);
+        } else {
+            iconRes = R.drawable.ic_notification_car; // Use car icon to indicate disconnected state
+            notificationText = getString(R.string.notification_text_disconnected);
+        }
+
+        Notification.Builder builder;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            builder = new Notification.Builder(this, NOTIFICATION_CHANNEL_ID);
+        } else {
+            builder = new Notification.Builder(this);
+        }
+
+        builder.setContentTitle(getString(R.string.notification_title))
+                .setContentText(notificationText)
+                .setSmallIcon(iconRes)
+                .setContentIntent(pendingIntent)
+                .setOngoing(true);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
+            return builder.build();
+        } else {
+            return builder.getNotification();
+        }
+    }
+
+    /**
+     * Update the notification to reflect current network status
+     */
+    private void updateNotification() {
+        if (notificationManager != null) {
+            notificationManager.notify(NOTIFICATION_ID, createNotification());
+        }
     }
 
     @Override
     public void onDestroy() {
         super.onDestroy();
         Log.d(TAG, "Plugin destroyed");
+        
+        // Stop foreground service and remove notification
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            stopForeground(STOP_FOREGROUND_REMOVE);
+        } else {
+            stopForeground(true);
+        }
         
         if (handler != null) {
             handler.removeCallbacksAndMessages(null);
@@ -213,14 +343,19 @@ public class HomeAssistantPlugin extends Plugin
 
     /**
      * Schedule periodic WiFi state checking
+     * WiFi checks are scheduled for all modes to:
+     * 1. Update network indicator notification in real-time
+     * 2. Support SSID-based transmission modes (ssid_connected, ssid_in_range)
+     * 3. Enable automatic network switching functionality
+     * 
+     * The check interval is 30 seconds, which is infrequent enough to minimize
+     * battery impact while keeping the notification reasonably current.
      */
     private void scheduleWifiCheck() {
-        // Only schedule if we need to monitor WiFi
+        // Schedule WiFi checks to update notification
         if (handler != null) {
-            if ("ssid_in_range".equals(transmissionMode) || "ssid_connected".equals(transmissionMode)) {
-                handler.removeMessages(MSG_CHECK_WIFI);
-                handler.sendEmptyMessageDelayed(MSG_CHECK_WIFI, wifiCheckInterval);
-            }
+            handler.removeMessages(MSG_CHECK_WIFI);
+            handler.sendEmptyMessageDelayed(MSG_CHECK_WIFI, wifiCheckInterval);
         }
     }
 
@@ -228,15 +363,35 @@ public class HomeAssistantPlugin extends Plugin
      * Check current WiFi state and update flags
      */
     private void checkWifiState() {
+        // Track if state changed to optimize notification updates
+        boolean stateChanged = false;
+        
         if (targetSSID == null || targetSSID.isEmpty()) {
-            Log.w(TAG, "Target SSID not configured");
+            // No home WiFi configured, but still check current connection for notification
+            // Don't perform expensive WiFi scans in this case
+            if (wifiManager != null) {
+                WifiInfo wifiInfo = wifiManager.getConnectionInfo();
+                if (wifiInfo != null) {
+                    String currentSSID = wifiInfo.getSSID();
+                    // Only update notification if we have WiFi info
+                    if (currentSSID != null) {
+                        stateChanged = true; // Update notification to show current state
+                    }
+                }
+            }
+            // Update notification once at the end if state changed
+            if (stateChanged) {
+                updateNotification();
+            }
             return;
         }
 
-        // Always check if connected to home WiFi (needed for both modes)
+        // Always check if connected to home WiFi (needed for all modes)
+        boolean wasConnectedToHomeWifi = isConnectedToHomeWifi;
         isConnectedToHomeWifi = isConnectedToSSID(targetSSID);
+        stateChanged = (wasConnectedToHomeWifi != isConnectedToHomeWifi);
         
-        // Check if target WiFi is in range (only needed for ssid_in_range mode)
+        // Check if target WiFi is in range (only for ssid_in_range mode to avoid unnecessary scans)
         if ("ssid_in_range".equals(transmissionMode)) {
             isHomeWifiInRange = isSSIDInRange(targetSSID);
             
@@ -255,6 +410,11 @@ public class HomeAssistantPlugin extends Plugin
             }
         } else if ("ssid_connected".equals(transmissionMode)) {
             Log.d(TAG, "WiFi state - Connected: " + isConnectedToHomeWifi);
+        }
+        
+        // Update notification once at the end if state changed or for initial check
+        if (stateChanged || wasConnectedToHomeWifi == isConnectedToHomeWifi) {
+            updateNotification();
         }
     }
 
@@ -437,6 +597,7 @@ public class HomeAssistantPlugin extends Plugin
                 public void run() {
                     isSwitchingNetwork = false;
                     // Update WiFi state to get current connection status
+                    // This will also update the notification
                     checkWifiState();
                     
                     if (isHomeNetwork && isConnectedToHomeWifi) {
