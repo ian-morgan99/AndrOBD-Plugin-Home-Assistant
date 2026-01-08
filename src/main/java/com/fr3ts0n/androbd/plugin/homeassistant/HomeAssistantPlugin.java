@@ -194,6 +194,9 @@ public class HomeAssistantPlugin extends Plugin
                     PendingIntent.FLAG_UPDATE_CURRENT);
         }
 
+        if (wifiManager == null) {
+            Log.w("HomeAssistantPlugin", "createNotification: wifiManager is null; notification will show disconnected state.");
+        }
         // Get WiFi info once at the beginning to avoid repeated system calls
         WifiInfo wifiInfo = wifiManager != null ? wifiManager.getConnectionInfo() : null;
         String currentSSID = wifiInfo != null ? wifiInfo.getSSID() : null;
