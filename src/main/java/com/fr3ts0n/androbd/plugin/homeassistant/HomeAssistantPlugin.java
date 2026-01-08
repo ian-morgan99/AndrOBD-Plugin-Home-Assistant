@@ -222,7 +222,7 @@ public class HomeAssistantPlugin extends Plugin
             iconRes = R.drawable.ic_notification_home; // Default to home icon for unknown WiFi
             notificationText = getString(R.string.notification_text_other);
         } else {
-            iconRes = R.drawable.ic_notification_home; // Default icon
+            iconRes = R.drawable.ic_notification_car; // Use car icon to indicate disconnected state
             notificationText = getString(R.string.notification_text_disconnected);
         }
 
