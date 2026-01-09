@@ -123,19 +123,30 @@ public class HomeAssistantPlugin extends Plugin
         super.onCreate();
         Log.d(TAG, "Plugin created");
 
+        // Initialize notification manager first - required for foreground service
+        notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        
+        // Create notification channel for Android O+
+        createNotificationChannel();
+        
+        // CRITICAL: Start foreground service immediately on Android O+ to avoid crash
+        // Must be called within 5 seconds of startForegroundService()
+        // Call this before any potentially slow initialization (WiFi scanning, etc.)
+        startForeground(NOTIFICATION_ID, createNotification());
+
+        // Now perform remaining initialization
         // Initialize handler first - required by preference loading
         handler = new Handler(Looper.getMainLooper(), this);
 
         prefs = PreferenceManager.getDefaultSharedPreferences(this);
         prefs.registerOnSharedPreferenceChangeListener(this);
         
-        // Load all preferences
+        // Load all preferences (includes update interval, transmission mode, SSIDs, etc.)
         onSharedPreferenceChanged(prefs, null);
 
         // Initialize WiFi and connectivity managers
         wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
         connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
-        notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
 
         // Log warning if critical services are unavailable
         if (wifiManager == null) {
@@ -149,14 +160,8 @@ public class HomeAssistantPlugin extends Plugin
                 .readTimeout(30, TimeUnit.SECONDS)
                 .build();
         
-        // Create notification channel for Android O+
-        createNotificationChannel();
-        
-        // Initialize WiFi state before creating notification to show accurate initial status
+        // Initialize WiFi state and update notification to show accurate status
         checkWifiState();
-        
-        // Start foreground service with notification
-        startForeground(NOTIFICATION_ID, createNotification());
         
         // Start WiFi monitoring if needed
         scheduleWifiCheck();

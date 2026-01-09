@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Plugin not recognized on Android 8.0+ (API 26+)**: Fixed service startup for modern Android versions
+  - Updated `HomeAssistantPluginReceiver` to use `startForegroundService()` on Android O and above
+  - This is required on Android 8.0+ when starting a service that calls `startForeground()`
+  - Resolves "Background execution not allowed" and service startup failures on Android 8+
+  - Plugin now properly starts and registers with AndrOBD's Plugin Manager on all Android versions
+- **Service crash on Android O+**: Optimized service initialization to call `startForeground()` immediately
+  - Moved `startForeground()` call to the beginning of `onCreate()` to avoid ANR (Application Not Responding)
+  - Android O+ requires `startForeground()` to be called within 5 seconds of `startForegroundService()`
+  - Prevents service crashes on Android 8.0+ due to delayed foreground service promotion
 - **Plugin not appearing in AndrOBD Plugin Manager**: Fixed PluginInfo constructor parameters
   - Copyright field was incorrectly set to "1.0" instead of proper copyright notice
   - URL field was incorrectly set to "Ian Morgan" instead of GitHub repository URL
