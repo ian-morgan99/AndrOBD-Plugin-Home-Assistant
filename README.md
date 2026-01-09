@@ -46,6 +46,13 @@ This extension plugin allows AndrOBD to publish OBD-II vehicle data to Home Assi
 - Android 4.0.3 (API 15) or higher
 - Network connectivity (WiFi or mobile data)
 
+### Testing Without a Vehicle
+
+You can test this plugin without connecting to a real vehicle! See [TESTING_WITHOUT_OBD.md](TESTING_WITHOUT_OBD.md) for detailed instructions on:
+- Using AndrOBD's built-in demo mode
+- Setting up ELM327 emulators
+- Testing with simulated OBD data
+
 ## Configuration
 
 ### 1. Setting up Home Assistant

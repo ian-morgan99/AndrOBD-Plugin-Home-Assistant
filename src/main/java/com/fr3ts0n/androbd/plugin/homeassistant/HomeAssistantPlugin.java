@@ -70,9 +70,9 @@ public class HomeAssistantPlugin extends Plugin
         "Home Assistant",
         HomeAssistantPlugin.class,
         "Send OBD data to Home Assistant",
-        "1.0",
+        "Copyright (C) 2024 Ian Morgan",
         "GPL-3.0",
-        "Ian Morgan"
+        "https://github.com/ian-morgan99/AndrOBD-Plugin-Home-Assistant"
     );
     
     // Preference keys - must be public for SettingsActivity access
