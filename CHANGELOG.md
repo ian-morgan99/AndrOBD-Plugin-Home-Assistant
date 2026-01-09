@@ -34,19 +34,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Maintains compatibility with Android 4.0.3+ (minSdkVersion 15)
 
 ### Added
-- **Permission documentation**: Added detailed comments explaining why each permission is needed
-- **Privacy declarations**: Added hardware feature declarations to clarify optional features
-  - WiFi hardware is marked as not required
-  - App can be installed on devices without WiFi hardware
-- **ACCESS_COARSE_LOCATION permission**: Added for better Android compatibility
-  - Complements ACCESS_FINE_LOCATION for WiFi scanning
-  - Required by some Android versions for WiFi network detection
-- **SECURITY.md**: Added comprehensive security policy documentation
-  - Details all security features and privacy protections
-  - Provides best practices for secure configuration
-  - Explains how to report security vulnerabilities
-
-### Added
 - **Testing without OBD device support**: Comprehensive documentation for testing without a vehicle
   - Created TESTING_WITHOUT_OBD.md guide covering multiple emulation options
   - Documents AndrOBD built-in demo mode (recommended method)
@@ -61,6 +48,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Android version-specific guidance
   - Advanced debugging techniques
 - **Permission documentation**: Added detailed comments explaining why each permission is needed
+- **Privacy declarations**: Added hardware feature declarations to clarify optional features
+  - WiFi hardware is marked as not required
+  - App can be installed on devices without WiFi hardware
+- **ACCESS_COARSE_LOCATION permission**: Added for better Android compatibility
+  - Complements ACCESS_FINE_LOCATION for WiFi scanning
+  - Required by some Android versions for WiFi network detection
+- **SECURITY.md**: Added comprehensive security policy documentation
+  - Details all security features and privacy protections
+  - Provides best practices for secure configuration
+  - Explains how to report security vulnerabilities
+
+## [1.0.8] - Previous Release
 (See git history for previous changes)
 
 ## [1.0.7] - Previous Release
