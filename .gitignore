@@ -20,7 +20,11 @@ local.properties
 *.aab
 
 # Signing files
+# Note: release-keystore.jks is intentionally NOT ignored
+# It's included in the repository for consistent signing across builds
+# This is acceptable for open-source projects - see SIGNING.md for details
 *.jks
+!release-keystore.jks
 *.keystore
 
 # Generated files

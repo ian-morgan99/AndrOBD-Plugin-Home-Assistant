@@ -18,11 +18,23 @@ android {
         variant.resValue "string", "app_version", variant.versionName
     }
 
+    signingConfigs {
+        release {
+            // Use a consistent release keystore to prevent package conflicts during updates
+            // This keystore is included in the repository for consistent signing across builds
+            // Password 'android' is intentionally simple for this open-source project
+            // See SIGNING.md for security considerations and why this is acceptable
+            storeFile rootProject.file('release-keystore.jks')
+            storePassword 'android'
+            keyAlias 'androbd-ha-plugin'
+            keyPassword 'android'
+        }
+    }
+
     buildTypes {
         release {
-            // Use debug signing for release builds to enable installation without custom keystore
-            // For production releases, replace with a proper release signing configuration
-            signingConfig signingConfigs.debug
+            // Use consistent release signing to prevent package conflicts when updating
+            signingConfig signingConfigs.release
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.txt'
         }
     }
