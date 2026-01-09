@@ -69,8 +69,10 @@ keytool -genkeypair -v \
   -alias androbd-ha-plugin \
   -storepass android \
   -keypass android \
-  -dname "CN=AndrOBD Home Assistant Plugin, OU=Development, O=Open Source, L=Internet, ST=Global, C=US"
+  -dname "CN=AndrOBD Home Assistant Plugin, OU=Development, O=Open Source, L=Unknown, ST=Unknown, C=US"
 ```
+
+**Note**: The Distinguished Name (DN) values are mostly cosmetic for self-signed certificates. The current keystore uses `L=Internet, ST=Global` which work fine, but `L=Unknown, ST=Unknown` are more standard placeholders if regenerating.
 
 **Warning**: Regenerating the keystore will create a new signing key, meaning users will need to uninstall the old version before installing the new one. Only do this if absolutely necessary.
 

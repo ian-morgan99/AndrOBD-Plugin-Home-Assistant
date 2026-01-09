@@ -24,7 +24,7 @@ android {
             // This keystore is included in the repository for consistent signing across builds
             // Password 'android' is intentionally simple for this open-source project
             // See SIGNING.md for security considerations and why this is acceptable
-            storeFile file('release-keystore.jks')
+            storeFile rootProject.file('release-keystore.jks')
             storePassword 'android'
             keyAlias 'androbd-ha-plugin'
             keyPassword 'android'
