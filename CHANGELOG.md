@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Package conflict when updating app**: Changed from debug signing to consistent release keystore
+  - Created a release keystore (`release-keystore.jks`) that is included in the repository
+  - All builds now use the same signing key, allowing seamless updates without uninstallation
+  - Users can now update the app without losing their settings and configuration
+  - This fixes the "conflicts with an existing package" error when installing new versions
+  - See [SIGNING.md](SIGNING.md) for technical details about the signing configuration
 - **Plugin not recognized on Android 8.0+ (API 26+)**: Fixed service startup for modern Android versions
   - Updated `HomeAssistantPluginReceiver` to use `startForegroundService()` on Android O and above
   - This is required on Android 8.0+ when starting a service that calls `startForeground()`

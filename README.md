@@ -40,6 +40,8 @@ This extension plugin allows AndrOBD to publish OBD-II vehicle data to Home Assi
    ```
 4. Install the APK on your Android device
 
+**Note**: All builds use a consistent signing key, so you can update the app without uninstalling it. Your settings will be preserved across updates. See [SIGNING.md](SIGNING.md) for details about the signing configuration.
+
 ### Requirements
 
 - AndrOBD v2.0.0 or higher installed on your device
