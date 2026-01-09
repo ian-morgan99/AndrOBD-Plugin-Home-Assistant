@@ -149,7 +149,7 @@ Context.startForegroundService() did not then call Service.startForeground()
 
 **Cause**: `startForeground()` is being called too late (>5 seconds after service start)
 
-**Solution**: Already fixed - `startForeground()` is now called within first 12 lines of `onCreate()`
+**Solution**: Already fixed - `startForeground()` is now called within the first few lines of `onCreate()`
 
 #### Issue: Nothing happens, no logs
 
