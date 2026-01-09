@@ -24,6 +24,25 @@ For open-source projects like this plugin, including the release keystore in the
 3. **No Security Risk**: This is a free, open-source plugin with no commercial concerns
 4. **Transparency**: The open-source nature means the keystore is not a secret
 
+### Security Considerations
+
+**Why is a simple password acceptable?**
+- This is a **free, open-source plugin** with no monetization or proprietary code
+- Android app signing doesn't protect against code inspection (APKs can always be decompiled)
+- The signing key only proves the app came from the same source as previous versions
+- For open-source projects, **consistency** is more important than keystore secrecy
+- Anyone can fork the project and create their own version with their own signing key
+
+**What does the signing key protect?**
+- Prevents malicious apps from updating this plugin without user knowledge
+- Ensures update continuity for users (same key = recognized as same app)
+- Android's signature verification protects against tampering during installation
+
+**What it does NOT protect:**
+- It does not prevent code inspection or reverse engineering (that's unavoidable for any Android app)
+- It does not protect intellectual property (all code is already public in this repo)
+- It does not secure the app's runtime behavior (that's handled by permissions and API security)
+
 ## Building Signed Releases
 
 The keystore is automatically used when building release APKs:
