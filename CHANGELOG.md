@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Plugin not appearing in AndrOBD Plugin Manager**: Fixed PluginInfo constructor parameters
+  - Copyright field was incorrectly set to "1.0" instead of proper copyright notice
+  - URL field was incorrectly set to "Ian Morgan" instead of GitHub repository URL
+  - This fix ensures the plugin is properly identified by AndrOBD's plugin discovery system
 - **Invalid package warning during installation**: Added signing configuration to release builds
   - Release APKs now use debug signing configuration to ensure proper signing
   - This resolves "invalid package" warnings that prevented APK installation on Android devices
@@ -42,7 +46,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Provides best practices for secure configuration
   - Explains how to report security vulnerabilities
 
-## [1.0.8] - Previous Release
+### Added
+- **Testing without OBD device support**: Comprehensive documentation for testing without a vehicle
+  - Created TESTING_WITHOUT_OBD.md guide covering multiple emulation options
+  - Documents AndrOBD built-in demo mode (recommended method)
+  - Documents Python ELM327-emulator integration for advanced testing
+  - Documents ECU Engine Sim Android app for Bluetooth testing
+  - Includes hardware emulator options for production-grade testing
+  - Provides debugging tips and troubleshooting procedures
+- **Plugin discovery troubleshooting guide**: Added TROUBLESHOOTING_PLUGIN_DISCOVERY.md
+  - Step-by-step diagnostic procedures for plugin visibility issues
+  - ADB commands for testing plugin discovery
+  - Common issues and solutions
+  - Android version-specific guidance
+  - Advanced debugging techniques
+- **Permission documentation**: Added detailed comments explaining why each permission is needed
 (See git history for previous changes)
 
 ## [1.0.7] - Previous Release
