@@ -58,7 +58,7 @@ build/outputs/apk/release/AndrOBD-Plugin-Home-Assistant-release.apk
 
 ## Regenerating the Keystore (Advanced)
 
-If you need to regenerate the keystore (not recommended unless necessary), use:
+If you need to regenerate the keystore (not recommended unless necessary), you can use a command like:
 
 ```bash
 keytool -genkeypair -v \
@@ -72,7 +72,7 @@ keytool -genkeypair -v \
   -dname "CN=AndrOBD Home Assistant Plugin, OU=Development, O=Open Source, L=Unknown, ST=Unknown, C=US"
 ```
 
-**Note**: The Distinguished Name (DN) values are mostly cosmetic for self-signed certificates. The current keystore uses `L=Internet, ST=Global` which work fine, but `L=Unknown, ST=Unknown` are more standard placeholders if regenerating.
+**Note**: The Distinguished Name (DN) values are mostly cosmetic for self-signed certificates. The current keystore in the repository uses `L=Internet, ST=Global` (from when it was first created), but if you need to regenerate it, using `L=Unknown, ST=Unknown` are more standard placeholders. Both work equally well.
 
 **Warning**: Regenerating the keystore will create a new signing key, meaning users will need to uninstall the old version before installing the new one. Only do this if absolutely necessary.
 
