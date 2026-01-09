@@ -2,7 +2,7 @@
 
 This extension plugin allows AndrOBD to publish OBD-II vehicle data to Home Assistant via webhooks or REST API.
 
-> **Latest Update**: Fixed installation package conflict issue and added modern security/privacy features. See [CHANGELOG.md](CHANGELOG.md) for details.
+> **Latest Update**: Fixed plugin recognition on Android 8.0+. If the plugin wasn't appearing in AndrOBD's Plugin Manager, this update fixes that issue. See [CHANGELOG.md](CHANGELOG.md) for details.
 
 ## Features
 
@@ -274,6 +274,14 @@ automation:
 ```
 
 ## Troubleshooting
+
+### Plugin not appearing in AndrOBD Plugin Manager (Android 8.0+)
+If you're running Android 8.0 (Oreo) or newer and the plugin doesn't appear in AndrOBD's Plugin Manager:
+
+1. **This was a known issue** - The plugin wasn't using the correct API for Android 8.0+
+2. **Fixed in latest version** - Update to the latest plugin version
+3. **Details**: See [ANDROID_8_FIX.md](ANDROID_8_FIX.md) for technical explanation
+4. **Still not working?**: Follow [TROUBLESHOOTING_PLUGIN_DISCOVERY.md](TROUBLESHOOTING_PLUGIN_DISCOVERY.md)
 
 ### Data not appearing in Home Assistant
 1. Check that Home Assistant URL is correct and accessible from your device
