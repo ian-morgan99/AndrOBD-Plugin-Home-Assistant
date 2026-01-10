@@ -17,6 +17,9 @@ public class HomeAssistantPluginReceiver extends com.fr3ts0n.androbd.plugin.Plug
     // Minimal delay for AlarmManager scheduling (1ms for immediate execution)
     private static final long ALARM_DELAY_MS = 1;
     
+    // Counter to prevent PendingIntent collisions
+    private static int requestCounter = 0;
+    
     @Override
     public Class<?> getPluginClass() {
         return HomeAssistantPlugin.class;
@@ -67,9 +70,11 @@ public class HomeAssistantPluginReceiver extends com.fr3ts0n.androbd.plugin.Plug
         }
         
         // Create PendingIntent with FLAG_IMMUTABLE for security (required on Android 12+)
-        // Use timestamp as requestCode to avoid PendingIntent collisions
-        // Mask to ensure positive value
-        int requestCode = (int) (System.currentTimeMillis() & 0x7fffffff);
+        // Use timestamp with counter to avoid PendingIntent collisions
+        int requestCode;
+        synchronized (HomeAssistantPluginReceiver.class) {
+            requestCode = (int) ((System.currentTimeMillis() & 0xFFFF) | (requestCounter++ << 16));
+        }
         PendingIntent pendingIntent = PendingIntent.getBroadcast(
             context, 
             requestCode, 
@@ -78,16 +83,38 @@ public class HomeAssistantPluginReceiver extends com.fr3ts0n.androbd.plugin.Plug
         );
         
         try {
-            // Schedule exact alarm for immediate execution
+            // Schedule alarm for immediate execution
             // This creates an exempted context for foreground service start
             // Note: setExactAndAllowWhileIdle is always available since this code
             // only runs on Android 12+ (API 31) which is >= API 23
-            alarmManager.setExactAndAllowWhileIdle(
-                AlarmManager.RTC_WAKEUP,
-                System.currentTimeMillis() + ALARM_DELAY_MS,
-                pendingIntent
-            );
-            Log.d(TAG, "Service start scheduled via AlarmManager for Android 12+");
+            
+            // On Android 13+ (API 33), check if exact alarms are permitted
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                if (alarmManager.canScheduleExactAlarms()) {
+                    alarmManager.setExactAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        System.currentTimeMillis() + ALARM_DELAY_MS,
+                        pendingIntent
+                    );
+                    Log.d(TAG, "Service start scheduled via exact alarm for Android 12+");
+                } else {
+                    // Fall back to inexact alarm if exact alarms not permitted
+                    alarmManager.setAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        System.currentTimeMillis() + ALARM_DELAY_MS,
+                        pendingIntent
+                    );
+                    Log.d(TAG, "Service start scheduled via inexact alarm (exact alarms not permitted)");
+                }
+            } else {
+                // Android 12 (API 31-32): exact alarms always permitted
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    System.currentTimeMillis() + ALARM_DELAY_MS,
+                    pendingIntent
+                );
+                Log.d(TAG, "Service start scheduled via exact alarm for Android 12+");
+            }
         } catch (SecurityException e) {
             // If alarm scheduling fails, fall back to direct service start
             // This may still fail with ForegroundServiceStartNotAllowedException,

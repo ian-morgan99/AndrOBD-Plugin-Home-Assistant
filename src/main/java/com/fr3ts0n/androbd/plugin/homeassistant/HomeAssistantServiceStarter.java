@@ -9,6 +9,9 @@ import android.util.Log;
  * Service starter for Android 12+ (API 31+)
  * This receiver is triggered by AlarmManager to start the foreground service
  * in an exempted context, avoiding ForegroundServiceStartNotAllowedException
+ * 
+ * Note: This receiver is only used on Android 12+ (API 31), so startForegroundService
+ * is always available (it was added in API 26)
  */
 public class HomeAssistantServiceStarter extends BroadcastReceiver {
     private static final String TAG = "HomeAssistantServiceStarter";
@@ -26,7 +29,7 @@ public class HomeAssistantServiceStarter extends BroadcastReceiver {
         
         // Start foreground service
         // This is allowed here because we're in an alarm context (exempted scenario)
-        // This receiver is only used on Android 12+ where startForegroundService is required
+        // This receiver is only used on Android 12+ where startForegroundService is available
         context.startForegroundService(serviceIntent);
     }
 }
