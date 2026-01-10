@@ -72,10 +72,8 @@ public class HomeAssistantPluginReceiver extends com.fr3ts0n.androbd.plugin.Plug
         }
         
         // Create PendingIntent with FLAG_IMMUTABLE for security (required on Android 12+)
-        // Use timestamp with counter to avoid PendingIntent collisions
-        // Combine lower 16 bits of timestamp with counter (mod 65536) in upper 16 bits
-        int requestCode = (int) ((System.currentTimeMillis() & 0xFFFF) | 
-                                  ((requestCounter.getAndIncrement() & 0xFFFF) << 16));
+        // Generate unique requestCode using timestamp + counter
+        int requestCode = (int) (System.currentTimeMillis() + requestCounter.getAndIncrement());
         PendingIntent pendingIntent = PendingIntent.getBroadcast(
             context, 
             requestCode, 
@@ -120,9 +118,7 @@ public class HomeAssistantPluginReceiver extends com.fr3ts0n.androbd.plugin.Plug
             // If alarm scheduling fails, fall back to direct service start
             // This may still fail with ForegroundServiceStartNotAllowedException,
             // but it's better than silently doing nothing
-            // SecurityException can occur if SCHEDULE_EXACT_ALARM permission is missing
-            // or if alarm scheduling is restricted by the system
-            Log.e(TAG, "SecurityException scheduling alarm (SCHEDULE_EXACT_ALARM permission issue?) - attempting direct service start as fallback", e);
+            Log.e(TAG, "Failed to schedule alarm, falling back to direct service start", e);
             originalIntent.setClass(context, getPluginClass());
             context.startForegroundService(originalIntent);
         }
