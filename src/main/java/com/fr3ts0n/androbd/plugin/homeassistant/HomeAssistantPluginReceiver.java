@@ -65,7 +65,8 @@ public class HomeAssistantPluginReceiver extends com.fr3ts0n.androbd.plugin.Plug
         
         // Create PendingIntent with FLAG_IMMUTABLE for security (required on Android 12+)
         // Use timestamp as requestCode to avoid PendingIntent collisions
-        int requestCode = (int) (System.currentTimeMillis() % Integer.MAX_VALUE);
+        // Mask to ensure positive value
+        int requestCode = (int) (System.currentTimeMillis() & 0x7fffffff);
         PendingIntent pendingIntent = PendingIntent.getBroadcast(
             context, 
             requestCode, 
