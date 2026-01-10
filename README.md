@@ -279,6 +279,24 @@ automation:
 
 ## Troubleshooting
 
+### WiFi Network Detection Issues
+If the plugin reports WiFi networks are not in range when they actually are, or automatic switching doesn't work:
+
+1. **Enable detailed logging** - The plugin has comprehensive WiFi detection logging
+   - Enable "Enable Logging" in plugin settings
+   - Use "View Logs" to see real-time detection information
+2. **Check WiFi permissions** - Location permission is required for WiFi scanning on Android 6+
+   - Go to Settings → Apps → AndrOBD Plugin → Permissions
+   - Grant Location permission (Fine or Coarse)
+3. **Review scan results** - Logs show all networks detected and signal strengths
+   - Look for your network in the scan results list
+   - Verify SSID spelling matches exactly (case-sensitive)
+4. **Understand Android scanning limits** - Android 9+ throttles background WiFi scans
+   - Apps limited to 4 scans per 2 minutes in background
+   - Keep AndrOBD in foreground for more frequent scans
+
+See [WIFI_DEBUGGING_GUIDE.md](WIFI_DEBUGGING_GUIDE.md) for detailed debugging steps and log analysis.
+
 ### Connectivity issues with OBD-II reader or Home Assistant
 If data transmission is unreliable or connections timeout frequently:
 
