@@ -18,8 +18,11 @@
     <!-- Foreground service permission for showing network indicator notification -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     
-    <!-- Schedule exact alarm permission for Android 12+ to work around foreground service restrictions -->
-    <!-- Required to start foreground service from BroadcastReceiver on Android 12+ -->
+    <!-- Schedule exact alarm permission for Android 12+ to work around foreground service restrictions. -->
+    <!-- On Android 13+ this is a restricted, user-controlled permission that must be enabled in system Settings. -->
+    <!-- When not granted, the app falls back to inexact alarms, which may cause delayed plugin execution. -->
+    <!-- SettingsActivity or other UI components should explain this to users and, if delays are observed, guide them -->
+    <!-- to enable exact alarms in: Settings → Apps → [App name] → Alarms & reminders (or equivalent on their device). -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
     
     <!-- WiFi hardware is optional - app works without it in some modes -->

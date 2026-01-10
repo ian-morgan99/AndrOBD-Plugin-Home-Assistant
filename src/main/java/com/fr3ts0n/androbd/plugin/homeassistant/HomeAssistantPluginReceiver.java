@@ -72,20 +72,26 @@ public class HomeAssistantPluginReceiver extends com.fr3ts0n.androbd.plugin.Plug
         }
         
         // Create PendingIntent with FLAG_IMMUTABLE for security (required on Android 12+)
-        // Generate unique requestCode using counter only (simpler and avoids overflow issues)
-        int requestCode = requestCounter.getAndIncrement();
+        // Generate requestCode from a wrapping counter to avoid overflow issues
+        int requestCode = requestCounter.incrementAndGet() % Integer.MAX_VALUE;
+        
+        // FLAG_IMMUTABLE is available from API 23 (M) onwards
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            flags |= PendingIntent.FLAG_IMMUTABLE;
+        }
         PendingIntent pendingIntent = PendingIntent.getBroadcast(
             context, 
             requestCode, 
             alarmIntent, 
-            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            flags
         );
         
         try {
             // Schedule alarm for immediate execution
             // This creates an exempted context for foreground service start
-            // Note: setExactAndAllowWhileIdle is always available since this code
-            // only runs on Android 12+ (API 31) which is >= API 23
+            // Note: setExactAndAllowWhileIdle is available since API 23, and this code path
+            // is only executed on Android 12+ (API 31+)
             
             // On Android 13+ (API 33 / TIRAMISU), check if exact alarms are permitted
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -103,7 +109,10 @@ public class HomeAssistantPluginReceiver extends com.fr3ts0n.androbd.plugin.Plug
                         System.currentTimeMillis() + ALARM_DELAY_MS,
                         pendingIntent
                     );
-                    Log.d(TAG, "Service start scheduled via inexact alarm (exact alarms not permitted)");
+                    Log.w(TAG, "Service start scheduled via inexact alarm because exact alarms are not permitted. "
+                            + "Execution may be significantly delayed by power-saving modes. "
+                            + "Time-sensitive functionality may not work properly unless exact alarms are allowed "
+                            + "(SCHEDULE_EXACT_ALARM or corresponding system setting).");
                 }
             } else {
                 // Android 12 (API 31-32 / S and S_V2): exact alarms always permitted
@@ -116,16 +125,25 @@ public class HomeAssistantPluginReceiver extends com.fr3ts0n.androbd.plugin.Plug
             }
         } catch (SecurityException e) {
             // If alarm scheduling fails, fall back to direct service start
-            // Note: This may still fail with ForegroundServiceStartNotAllowedException
-            // on Android 12+, but it's the best fallback we can provide
+            // Note: This will likely fail on Android 12+ with ForegroundServiceStartNotAllowedException
+            // (which extends IllegalStateException), but it's the best fallback we can provide
             Log.e(TAG, "Failed to schedule alarm, falling back to direct service start", e);
             originalIntent.setClass(context, getPluginClass());
             try {
                 context.startForegroundService(originalIntent);
-            } catch (IllegalStateException | SecurityException fallbackException) {
-                Log.e(TAG, "Fallback service start also failed", fallbackException);
+            } catch (IllegalStateException fallbackException) {
+                // IllegalStateException includes ForegroundServiceStartNotAllowedException on Android 12+
+                Log.e(
+                    TAG,
+                    "Alarm scheduling failed and direct foreground service start also failed. " +
+                    "Service cannot be started due to Android 12+ foreground service restrictions.",
+                    fallbackException
+                );
                 // At this point, we've exhausted all options
                 // The service cannot start in this restricted context
+                // Consider notifying the user that Android 12+ restrictions prevent starting the service
+            } catch (SecurityException fallbackException) {
+                Log.e(TAG, "Fallback service start failed due to security restrictions", fallbackException);
             }
         }
     }

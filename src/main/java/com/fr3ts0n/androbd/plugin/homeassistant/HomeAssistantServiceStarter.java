@@ -21,6 +21,12 @@ public class HomeAssistantServiceStarter extends BroadcastReceiver {
     
     @Override
     public void onReceive(Context context, Intent intent) {
+        // Defensive null check for intent (should never be null per Android contract)
+        if (intent == null) {
+            Log.e(TAG, "Received null intent, cannot start service");
+            return;
+        }
+        
         Log.d(TAG, "Alarm triggered, starting service: " + intent.getAction());
         
         // Create intent for the plugin service
@@ -30,9 +36,13 @@ public class HomeAssistantServiceStarter extends BroadcastReceiver {
             serviceIntent.putExtras(intent.getExtras());
         }
         
-        // Start foreground service
+        // Start foreground service with error handling
         // This is allowed here because we're in an alarm context (exempted scenario)
         // This receiver is only used on Android 12+ where startForegroundService is available
-        context.startForegroundService(serviceIntent);
+        try {
+            context.startForegroundService(serviceIntent);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to start foreground service for action: " + intent.getAction(), e);
+        }
     }
 }
