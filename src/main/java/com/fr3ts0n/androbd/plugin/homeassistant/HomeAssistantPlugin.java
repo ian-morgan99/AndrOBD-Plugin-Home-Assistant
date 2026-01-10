@@ -57,8 +57,6 @@ import okhttp3.Response;
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 
-import java.net.InetSocketAddress;
-import java.net.Proxy;
 import java.net.Socket;
 import java.util.Set;
 

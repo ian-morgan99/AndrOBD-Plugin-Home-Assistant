@@ -218,8 +218,9 @@ public class LogManager {
         content = URL_PATTERN.matcher(content).replaceAll(match -> {
             String url = match.group(1);
             // Keep protocol and first few characters
-            if (url.length() > 10) {
-                String protocol = url.substring(0, url.indexOf("://") + 3);
+            int protocolEnd = url.indexOf("://");
+            if (protocolEnd != -1 && url.length() > protocolEnd + 3) {
+                String protocol = url.substring(0, protocolEnd + 3);
                 return protocol + "[REDACTED_HOST]";
             }
             return "[REDACTED_URL]";
