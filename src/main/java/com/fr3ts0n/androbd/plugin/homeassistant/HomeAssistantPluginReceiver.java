@@ -84,28 +84,25 @@ public class HomeAssistantPluginReceiver extends com.fr3ts0n.androbd.plugin.Plug
             alarmIntent.putExtras(originalIntent.getExtras());
         }
         
-        // Create PendingIntent with FLAG_IMMUTABLE for security (required on Android 12+)
-        // Generate unique requestCode from counter with proper wraparound
-        // Use mask to ensure positive values (handles Integer.MIN_VALUE correctly)
+        // Create PendingIntent with FLAG_IMMUTABLE for security
+        // Generate unique requestCode from counter
+        // Note: This method only runs on Android 12+ (API 31+), so FLAG_IMMUTABLE is always available (added in API 23)
         int requestCode = requestCounter.getAndIncrement() & POSITIVE_INT_MASK;
         
-        // FLAG_IMMUTABLE is available from API 23 (M) onwards
-        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            flags |= PendingIntent.FLAG_IMMUTABLE;
-        }
+        // FLAG_IMMUTABLE is required on Android 12+ and available since API 23
+        // Since this code path only executes on API 31+, FLAG_IMMUTABLE is always available
         PendingIntent pendingIntent = PendingIntent.getBroadcast(
             context, 
             requestCode, 
             alarmIntent, 
-            flags
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
         
         try {
             // Schedule alarm for immediate execution
             // This creates an exempted context for foreground service start
-            // Note: setExactAndAllowWhileIdle is available since API 23, and this code path
-            // is only executed on Android 12+ (API 31+)
+            // Note: This entire method only executes on Android 12+ (API 31+),
+            // where setExactAndAllowWhileIdle (available since API 23) is guaranteed to be available
             
             // On Android 13+ (API 33 / TIRAMISU), check if exact alarms are permitted
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
