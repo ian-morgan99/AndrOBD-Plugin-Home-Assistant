@@ -51,7 +51,10 @@ public class HomeAssistantPluginReceiver extends com.fr3ts0n.androbd.plugin.Plug
     private void scheduleServiceStart(Context context, Intent originalIntent) {
         AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         if (alarmManager == null) {
-            Log.e(TAG, "AlarmManager not available - cannot start service on Android 12+");
+            Log.e(TAG, "AlarmManager not available - falling back to direct service start");
+            // Fallback to direct service start, may fail with ForegroundServiceStartNotAllowedException
+            originalIntent.setClass(context, getPluginClass());
+            context.startForegroundService(originalIntent);
             return;
         }
         
@@ -89,7 +92,9 @@ public class HomeAssistantPluginReceiver extends com.fr3ts0n.androbd.plugin.Plug
             // If alarm scheduling fails, fall back to direct service start
             // This may still fail with ForegroundServiceStartNotAllowedException,
             // but it's better than silently doing nothing
-            Log.e(TAG, "SecurityException scheduling alarm - attempting direct service start as fallback", e);
+            // SecurityException can occur if SCHEDULE_EXACT_ALARM permission is missing
+            // or if alarm scheduling is restricted by the system
+            Log.e(TAG, "SecurityException scheduling alarm (SCHEDULE_EXACT_ALARM permission issue?) - attempting direct service start as fallback", e);
             originalIntent.setClass(context, getPluginClass());
             context.startForegroundService(originalIntent);
         }
