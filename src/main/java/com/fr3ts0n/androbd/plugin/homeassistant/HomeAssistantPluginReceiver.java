@@ -22,6 +22,9 @@ public class HomeAssistantPluginReceiver extends com.fr3ts0n.androbd.plugin.Plug
     // Counter to prevent PendingIntent collisions (thread-safe)
     private static final AtomicInteger requestCounter = new AtomicInteger(0);
     
+    // Mask to ensure positive request codes (handles overflow including Integer.MIN_VALUE)
+    private static final int POSITIVE_INT_MASK = 0x7FFFFFFF;
+    
     // Log messages
     private static final String LOG_INEXACT_ALARM_WARNING = 
             "Service start scheduled via inexact alarm because exact alarms are not permitted. " +
@@ -83,8 +86,8 @@ public class HomeAssistantPluginReceiver extends com.fr3ts0n.androbd.plugin.Plug
         
         // Create PendingIntent with FLAG_IMMUTABLE for security (required on Android 12+)
         // Generate unique requestCode from counter with proper wraparound
-        // Use bitwise AND to ensure positive values (handles Integer.MIN_VALUE correctly)
-        int requestCode = requestCounter.getAndIncrement() & 0x7FFFFFFF;
+        // Use mask to ensure positive values (handles Integer.MIN_VALUE correctly)
+        int requestCode = requestCounter.getAndIncrement() & POSITIVE_INT_MASK;
         
         // FLAG_IMMUTABLE is available from API 23 (M) onwards
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
@@ -144,7 +147,8 @@ public class HomeAssistantPluginReceiver extends com.fr3ts0n.androbd.plugin.Plug
                 Log.e(TAG, LOG_ALARM_AND_SERVICE_START_FAILED, fallbackException);
                 // At this point, we've exhausted all options
                 // The service cannot start in this restricted context
-                // Consider notifying the user that Android 12+ restrictions prevent starting the service
+                // TODO: Consider adding user-facing notification or UI feedback mechanism
+                // to inform users when Android 12+ restrictions prevent service startup
             } catch (SecurityException fallbackException) {
                 Log.e(TAG, "Fallback service start failed due to security restrictions", fallbackException);
             }
