@@ -43,18 +43,25 @@ For open-source projects like this plugin, including the release keystore in the
 - It does not protect intellectual property (all code is already public in this repo)
 - It does not secure the app's runtime behavior (that's handled by permissions and API security)
 
-## Building Signed Releases
+## Building Signed APKs
 
-The keystore is automatically used when building release APKs:
+The keystore is automatically used for **both debug and release** builds to prevent package conflicts:
 
 ```bash
+# Build debug APK (signed with release keystore)
+./gradlew assembleDebug
+
+# Build release APK (signed with release keystore)
 ./gradlew assembleRelease
 ```
 
-The signed APK will be in:
+The signed APKs will be in:
 ```
+build/outputs/apk/debug/AndrOBD-Plugin-Home-Assistant-debug.apk
 build/outputs/apk/release/AndrOBD-Plugin-Home-Assistant-release.apk
 ```
+
+**Important:** Both debug and release builds use the same signing key. This ensures users can switch between debug and release versions without encountering "package conflict" warnings that would require uninstalling the app first.
 
 ## Regenerating the Keystore (Advanced)
 

@@ -17,6 +17,7 @@ jobs:
           java-version: 17
 
       - name: Build with Gradle
+        # Note: Debug builds use the same release keystore to prevent package conflicts
         run: ./gradlew assembleDebug --stacktrace
 
       - name: Upload APK

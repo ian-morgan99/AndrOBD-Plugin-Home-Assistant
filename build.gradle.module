@@ -32,6 +32,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Use the same signing config as release to prevent package conflicts
+            // This ensures users can switch between debug and release builds without uninstalling
+            signingConfig signingConfigs.release
+        }
         release {
             // Use consistent release signing to prevent package conflicts when updating
             signingConfig signingConfigs.release
