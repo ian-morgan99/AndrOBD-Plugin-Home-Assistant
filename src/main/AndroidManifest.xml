@@ -65,6 +65,11 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".LogViewerActivity"
+            android:exported="false"
+            android:label="Application Logs"/>
+
     </application>
 
 </manifest>

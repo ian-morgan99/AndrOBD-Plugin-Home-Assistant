@@ -23,6 +23,12 @@
     <string name="ha_update_interval_description">How often to send data (milliseconds, e.g., 5000 = 5 seconds)</string>
     <string name="data_items">Data Items</string>
     <string name="data_items_description">Select OBD data items to publish to Home Assistant</string>
+    <string name="ha_use_mobile_data">Send Data Via Mobile</string>
+    <string name="ha_use_mobile_data_description">Use mobile data for Home Assistant transmission while connected to OBD WiFi</string>
+    <string name="ha_enable_logging">Enable Logging</string>
+    <string name="ha_enable_logging_description">Log all actions for debugging (logs are obfuscated for privacy)</string>
+    <string name="ha_show_logs">Show Logs</string>
+    <string name="ha_show_logs_description">View, copy, or clear application logs</string>
     
     <!-- Transmission modes -->
     <string-array name="ha_transmission_mode_options">
