@@ -196,6 +196,18 @@ public class HomeAssistantPlugin extends Plugin
         
         logManager.logInfo("HTTP client initialized with extended timeouts");
         
+        // Log Android version and system information for debugging
+        logManager.logInfo("Android version: " + Build.VERSION.SDK_INT + 
+            " (" + Build.VERSION.RELEASE + "), Device: " + Build.MANUFACTURER + " " + Build.MODEL);
+        Log.i(TAG, "Android version: " + Build.VERSION.SDK_INT + 
+            " (" + Build.VERSION.RELEASE + "), Device: " + Build.MANUFACTURER + " " + Build.MODEL);
+        
+        // Log WiFi capabilities
+        if (wifiManager != null) {
+            logManager.logInfo("WiFi enabled: " + wifiManager.isWifiEnabled());
+            Log.i(TAG, "WiFi enabled: " + wifiManager.isWifiEnabled());
+        }
+        
         // Initialize WiFi state and update notification to show accurate status
         checkWifiState();
         
@@ -560,7 +572,15 @@ public class HomeAssistantPlugin extends Plugin
         // Track if state changed to optimize notification updates
         boolean stateChanged = false;
         
+        logManager.logDebug("=== WiFi State Check Started ===");
+        Log.d(TAG, "=== WiFi State Check Started ===");
+        logManager.logDebug("Transmission mode: " + transmissionMode);
+        Log.d(TAG, "Transmission mode: " + transmissionMode);
+        
         if (targetSSID == null || targetSSID.isEmpty()) {
+            logManager.logDebug("No home WiFi configured (targetSSID is " + (targetSSID == null ? "null" : "empty") + ")");
+            Log.d(TAG, "No home WiFi configured (targetSSID is " + (targetSSID == null ? "null" : "empty") + ")");
+            
             // No home WiFi configured, but still check current connection for notification
             // Don't perform expensive WiFi scans in this case
             if (wifiManager != null) {
@@ -581,6 +601,14 @@ public class HomeAssistantPlugin extends Plugin
             return;
         }
 
+        logManager.logDebug("Configured Home SSID: '" + targetSSID + "'");
+        Log.d(TAG, "Configured Home SSID: '" + targetSSID + "'");
+        
+        if (autoSwitch && obdSSID != null && !obdSSID.isEmpty()) {
+            logManager.logDebug("Configured OBD SSID: '" + obdSSID + "' (auto-switch enabled)");
+            Log.d(TAG, "Configured OBD SSID: '" + obdSSID + "' (auto-switch enabled)");
+        }
+
         // Always check if connected to home WiFi (needed for all modes)
         boolean wasConnectedToHomeWifi = isConnectedToHomeWifi;
         isConnectedToHomeWifi = isConnectedToSSID(targetSSID);
@@ -592,10 +620,15 @@ public class HomeAssistantPlugin extends Plugin
         
         // Check if target WiFi is in range (only for ssid_in_range mode to avoid unnecessary scans)
         if ("ssid_in_range".equals(transmissionMode)) {
+            logManager.logDebug("Checking if home WiFi is in range...");
+            Log.d(TAG, "Checking if home WiFi is in range...");
+            
             isHomeWifiInRange = isSSIDInRange(targetSSID);
             
             // Also check OBD WiFi state if auto-switching is enabled
             if (autoSwitch && obdSSID != null && !obdSSID.isEmpty()) {
+                logManager.logDebug("Checking if OBD WiFi is in range...");
+                Log.d(TAG, "Checking if OBD WiFi is in range...");
                 isOBDWifiInRange = isSSIDInRange(obdSSID);
             }
             
@@ -616,6 +649,9 @@ public class HomeAssistantPlugin extends Plugin
             logManager.logDebug("WiFi state - Connected: " + isConnectedToHomeWifi);
         }
         
+        logManager.logDebug("=== WiFi State Check Complete ===");
+        Log.d(TAG, "=== WiFi State Check Complete ===");
+        
         // Update notification once at the end if state changed or for initial check
         if (stateChanged || wasConnectedToHomeWifi == isConnectedToHomeWifi) {
             updateNotification();
@@ -629,29 +665,55 @@ public class HomeAssistantPlugin extends Plugin
      */
     private boolean isConnectedToSSID(String ssid) {
         if (wifiManager == null || connectivityManager == null) {
+            logManager.logDebug("Connection check failed - WifiManager or ConnectivityManager is null");
+            Log.d(TAG, "Connection check failed - WifiManager or ConnectivityManager is null");
             return false;
         }
 
         NetworkInfo networkInfo = connectivityManager.getActiveNetworkInfo();
-        if (networkInfo == null || !networkInfo.isConnected() || networkInfo.getType() != ConnectivityManager.TYPE_WIFI) {
+        if (networkInfo == null) {
+            logManager.logDebug("Connection check: No active network");
+            Log.d(TAG, "Connection check: No active network");
+            return false;
+        }
+        
+        if (!networkInfo.isConnected()) {
+            logManager.logDebug("Connection check: Network not connected (state: " + networkInfo.getState() + ")");
+            Log.d(TAG, "Connection check: Network not connected (state: " + networkInfo.getState() + ")");
+            return false;
+        }
+        
+        if (networkInfo.getType() != ConnectivityManager.TYPE_WIFI) {
+            logManager.logDebug("Connection check: Not connected to WiFi (type: " + networkInfo.getTypeName() + ")");
+            Log.d(TAG, "Connection check: Not connected to WiFi (type: " + networkInfo.getTypeName() + ")");
             return false;
         }
 
         WifiInfo wifiInfo = wifiManager.getConnectionInfo();
         if (wifiInfo == null) {
+            logManager.logDebug("Connection check: WifiInfo is null");
+            Log.d(TAG, "Connection check: WifiInfo is null");
             return false;
         }
 
         String currentSSID = wifiInfo.getSSID();
         if (currentSSID == null) {
+            logManager.logDebug("Connection check: Current SSID is null");
+            Log.d(TAG, "Connection check: Current SSID is null");
             return false;
         }
 
         // Remove quotes from SSID if present
         currentSSID = currentSSID.replace("\"", "");
         String targetSSIDClean = ssid.replace("\"", "");
+        
+        boolean isConnected = currentSSID.equals(targetSSIDClean);
+        logManager.logDebug("Connection check: Currently connected to '" + currentSSID + 
+            "', target is '" + targetSSIDClean + "', match: " + isConnected);
+        Log.d(TAG, "Connection check: Currently connected to '" + currentSSID + 
+            "', target is '" + targetSSIDClean + "', match: " + isConnected);
 
-        return currentSSID.equals(targetSSIDClean);
+        return isConnected;
     }
 
     /**
@@ -662,31 +724,75 @@ public class HomeAssistantPlugin extends Plugin
      */
     private boolean isSSIDInRange(String ssid) {
         if (wifiManager == null) {
+            logManager.logWarning("WiFi scan failed - WifiManager is null");
+            Log.w(TAG, "WiFi scan failed - WifiManager is null");
             return false;
         }
 
+        String targetSSIDClean = ssid.replace("\"", "");
+        logManager.logDebug("Scanning for WiFi SSID: '" + targetSSIDClean + "'");
+        Log.d(TAG, "Scanning for WiFi SSID: '" + targetSSIDClean + "'");
+
         try {
+            // Log WiFi enabled state
+            boolean wifiEnabled = wifiManager.isWifiEnabled();
+            logManager.logDebug("WiFi enabled: " + wifiEnabled);
+            Log.d(TAG, "WiFi enabled: " + wifiEnabled);
+            
+            if (!wifiEnabled) {
+                logManager.logWarning("WiFi is disabled - cannot scan for networks");
+                Log.w(TAG, "WiFi is disabled - cannot scan for networks");
+                return false;
+            }
+            
             // Start WiFi scan - results will be available after a short delay
-            wifiManager.startScan();
+            boolean scanStarted = wifiManager.startScan();
+            logManager.logDebug("WiFi scan started: " + scanStarted + " (Android " + Build.VERSION.SDK_INT + ")");
+            Log.d(TAG, "WiFi scan started: " + scanStarted + " (Android " + Build.VERSION.SDK_INT + ")");
             
             // Get most recent scan results (may be from previous scan)
             List<ScanResult> scanResults = wifiManager.getScanResults();
-            if (scanResults == null || scanResults.isEmpty()) {
+            if (scanResults == null) {
+                logManager.logWarning("WiFi scan results are null - no networks detected");
+                Log.w(TAG, "WiFi scan results are null - no networks detected");
+                return false;
+            }
+            
+            if (scanResults.isEmpty()) {
+                logManager.logWarning("WiFi scan results are empty - no networks detected (0 networks)");
+                Log.w(TAG, "WiFi scan results are empty - no networks detected (0 networks)");
                 return false;
             }
 
-            String targetSSIDClean = ssid.replace("\"", "");
+            // Log all SSIDs found for debugging
+            logManager.logDebug("WiFi scan found " + scanResults.size() + " networks:");
+            Log.d(TAG, "WiFi scan found " + scanResults.size() + " networks:");
+            for (ScanResult result : scanResults) {
+                String ssidName = (result.SSID != null && !result.SSID.isEmpty()) ? result.SSID : "<hidden>";
+                logManager.logDebug("  - SSID: '" + ssidName + "' Signal: " + result.level + " dBm");
+                Log.d(TAG, "  - SSID: '" + ssidName + "' Signal: " + result.level + " dBm");
+            }
 
             // Check if our target SSID is in the scan results
             for (ScanResult result : scanResults) {
                 if (result.SSID != null && result.SSID.equals(targetSSIDClean)) {
-                    Log.d(TAG, "Home WiFi found in range: " + result.SSID + " (Signal: " + result.level + ")");
+                    logManager.logInfo("Target WiFi found in range: '" + result.SSID + "' (Signal: " + result.level + " dBm)");
+                    Log.i(TAG, "Target WiFi found in range: '" + result.SSID + "' (Signal: " + result.level + " dBm)");
                     return true;
                 }
             }
+            
+            // Target not found
+            logManager.logDebug("Target WiFi '" + targetSSIDClean + "' NOT found in scan results");
+            Log.d(TAG, "Target WiFi '" + targetSSIDClean + "' NOT found in scan results");
+            
         } catch (SecurityException e) {
-            Log.e(TAG, "Security exception during WiFi scan - location permission may be required", e);
+            logManager.logError("Security exception during WiFi scan - location permission may be required (Android " + 
+                Build.VERSION.SDK_INT + "): " + e.getMessage());
+            Log.e(TAG, "Security exception during WiFi scan - location permission may be required (Android " + 
+                Build.VERSION.SDK_INT + ")", e);
         } catch (Exception e) {
+            logManager.logError("Error scanning for WiFi networks: " + e.getMessage());
             Log.e(TAG, "Error scanning for WiFi networks", e);
         }
 
@@ -840,37 +946,62 @@ public class HomeAssistantPlugin extends Plugin
      * Check if data should be sent based on current transmission mode and WiFi state
      */
     private boolean shouldSendData() {
+        boolean hasInternet = hasInternetConnectivity();
+        
+        logManager.logDebug("Checking if data should be sent - Mode: " + transmissionMode + 
+            ", Internet: " + hasInternet + ", Home connected: " + isConnectedToHomeWifi + 
+            ", Home in range: " + isHomeWifiInRange);
+        Log.d(TAG, "Checking if data should be sent - Mode: " + transmissionMode + 
+            ", Internet: " + hasInternet + ", Home connected: " + isConnectedToHomeWifi + 
+            ", Home in range: " + isHomeWifiInRange);
+        
         switch (transmissionMode) {
             case "realtime":
                 // Always send in real-time mode (assuming internet connectivity)
-                return hasInternetConnectivity();
+                boolean canSendRealtime = hasInternet;
+                logManager.logDebug("Realtime mode check: " + (canSendRealtime ? "SEND" : "SKIP"));
+                Log.d(TAG, "Realtime mode check: " + (canSendRealtime ? "SEND" : "SKIP"));
+                return canSendRealtime;
                 
             case "ssid_connected":
                 // Only send when connected to target WiFi
                 if (targetSSID == null || targetSSID.isEmpty()) {
+                    logManager.logWarning("Target SSID not configured for ssid_connected mode");
                     Log.w(TAG, "Target SSID not configured for ssid_connected mode");
                     return false;
                 }
                 // Must be connected to home WiFi AND have internet connectivity
-                return isConnectedToHomeWifi && hasInternetConnectivity();
+                boolean canSendConnected = isConnectedToHomeWifi && hasInternet;
+                logManager.logDebug("SSID connected mode check: connected=" + isConnectedToHomeWifi + 
+                    ", internet=" + hasInternet + " -> " + (canSendConnected ? "SEND" : "SKIP"));
+                Log.d(TAG, "SSID connected mode check: connected=" + isConnectedToHomeWifi + 
+                    ", internet=" + hasInternet + " -> " + (canSendConnected ? "SEND" : "SKIP"));
+                return canSendConnected;
                 
             case "ssid_in_range":
                 // For ssid_in_range mode: Only send when actually CONNECTED to home WiFi with internet
                 // (not just when in range - user must manually switch to home WiFi first)
                 if (targetSSID == null || targetSSID.isEmpty()) {
+                    logManager.logWarning("Target SSID not configured for ssid_in_range mode");
                     Log.w(TAG, "Target SSID not configured for ssid_in_range mode");
                     return false;
                 }
                 // Must be connected to home WiFi (not just in range) AND have internet connectivity
-                boolean canSend = isConnectedToHomeWifi && hasInternetConnectivity();
+                boolean canSend = isConnectedToHomeWifi && hasInternet;
                 if (!canSend && isHomeWifiInRange) {
+                    logManager.logInfo("Home WiFi in range but not connected - switch networks to transmit buffered data");
                     Log.d(TAG, "Home WiFi in range but not connected - switch networks to transmit buffered data");
                 }
+                logManager.logDebug("SSID in range mode check: connected=" + isConnectedToHomeWifi + 
+                    ", in_range=" + isHomeWifiInRange + ", internet=" + hasInternet + " -> " + (canSend ? "SEND" : "SKIP"));
+                Log.d(TAG, "SSID in range mode check: connected=" + isConnectedToHomeWifi + 
+                    ", in_range=" + isHomeWifiInRange + ", internet=" + hasInternet + " -> " + (canSend ? "SEND" : "SKIP"));
                 return canSend;
                 
             default:
+                logManager.logWarning("Unknown transmission mode: " + transmissionMode);
                 Log.w(TAG, "Unknown transmission mode: " + transmissionMode);
-                return hasInternetConnectivity(); // Default to sending if internet available
+                return hasInternet; // Default to sending if internet available
         }
     }
 
@@ -882,21 +1013,36 @@ public class HomeAssistantPlugin extends Plugin
      */
     private boolean hasInternetConnectivity() {
         if (connectivityManager == null) {
+            logManager.logWarning("Cannot check internet connectivity - ConnectivityManager is null");
+            Log.w(TAG, "Cannot check internet connectivity - ConnectivityManager is null");
             return false;
         }
 
         try {
             NetworkInfo activeNetwork = connectivityManager.getActiveNetworkInfo();
-            boolean isConnected = activeNetwork != null && 
-                                  activeNetwork.isConnectedOrConnecting() &&
-                                  activeNetwork.isAvailable();
+            if (activeNetwork == null) {
+                logManager.logDebug("No active network available");
+                Log.d(TAG, "No active network available");
+                return false;
+            }
+            
+            boolean isConnected = activeNetwork.isConnectedOrConnecting() && activeNetwork.isAvailable();
             
             if (!isConnected) {
-                Log.d(TAG, "No active network connection available");
+                logManager.logDebug("No active network connection available (state: " + activeNetwork.getState() + 
+                    ", type: " + activeNetwork.getTypeName() + ")");
+                Log.d(TAG, "No active network connection available (state: " + activeNetwork.getState() + 
+                    ", type: " + activeNetwork.getTypeName() + ")");
+            } else {
+                logManager.logDebug("Active network available: " + activeNetwork.getTypeName() + 
+                    " (connected: " + activeNetwork.isConnected() + ")");
+                Log.d(TAG, "Active network available: " + activeNetwork.getTypeName() + 
+                    " (connected: " + activeNetwork.isConnected() + ")");
             }
             
             return isConnected;
         } catch (Exception e) {
+            logManager.logError("Error checking internet connectivity: " + e.getMessage());
             Log.e(TAG, "Error checking internet connectivity", e);
             return false;
         }
