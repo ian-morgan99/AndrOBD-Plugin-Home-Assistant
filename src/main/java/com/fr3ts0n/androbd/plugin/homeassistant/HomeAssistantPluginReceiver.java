@@ -22,6 +22,16 @@ public class HomeAssistantPluginReceiver extends com.fr3ts0n.androbd.plugin.Plug
     // Counter to prevent PendingIntent collisions (thread-safe)
     private static final AtomicInteger requestCounter = new AtomicInteger(0);
     
+    // Log messages
+    private static final String LOG_INEXACT_ALARM_WARNING = 
+            "Service start scheduled via inexact alarm because exact alarms are not permitted. " +
+            "Execution may be significantly delayed by power-saving modes. Time-sensitive " +
+            "functionality may not work properly unless exact alarms are allowed.";
+    
+    private static final String LOG_ALARM_AND_SERVICE_START_FAILED = 
+            "Alarm scheduling failed and direct foreground service start also failed. " +
+            "Service cannot be started due to Android 12+ foreground service restrictions.";
+    
     @Override
     public Class<?> getPluginClass() {
         return HomeAssistantPlugin.class;
@@ -74,7 +84,7 @@ public class HomeAssistantPluginReceiver extends com.fr3ts0n.androbd.plugin.Plug
         // Create PendingIntent with FLAG_IMMUTABLE for security (required on Android 12+)
         // Generate unique requestCode from counter with proper wraparound
         // Use bitwise AND to ensure positive values (handles Integer.MIN_VALUE correctly)
-        int requestCode = requestCounter.incrementAndGet() & 0x7FFFFFFF;
+        int requestCode = requestCounter.getAndIncrement() & 0x7FFFFFFF;
         
         // FLAG_IMMUTABLE is available from API 23 (M) onwards
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
@@ -110,9 +120,7 @@ public class HomeAssistantPluginReceiver extends com.fr3ts0n.androbd.plugin.Plug
                         System.currentTimeMillis() + ALARM_DELAY_MS,
                         pendingIntent
                     );
-                    Log.w(TAG, "Service start scheduled via inexact alarm because exact alarms are not permitted. " +
-                            "Execution may be significantly delayed by power-saving modes. Time-sensitive " +
-                            "functionality may not work properly unless exact alarms are allowed.");
+                    Log.w(TAG, LOG_INEXACT_ALARM_WARNING);
                 }
             } else {
                 // Android 12 (API 31-32 / S and S_V2): exact alarms always permitted
@@ -133,12 +141,7 @@ public class HomeAssistantPluginReceiver extends com.fr3ts0n.androbd.plugin.Plug
                 context.startForegroundService(originalIntent);
             } catch (IllegalStateException fallbackException) {
                 // IllegalStateException includes ForegroundServiceStartNotAllowedException on Android 12+
-                Log.e(
-                    TAG,
-                    "Alarm scheduling failed and direct foreground service start also failed. " +
-                    "Service cannot be started due to Android 12+ foreground service restrictions.",
-                    fallbackException
-                );
+                Log.e(TAG, LOG_ALARM_AND_SERVICE_START_FAILED, fallbackException);
                 // At this point, we've exhausted all options
                 // The service cannot start in this restricted context
                 // Consider notifying the user that Android 12+ restrictions prevent starting the service
