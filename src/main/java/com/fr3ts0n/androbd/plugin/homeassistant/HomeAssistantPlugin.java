@@ -31,10 +31,11 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.net.Inet4Address;
+import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -952,14 +953,14 @@ public class HomeAssistantPlugin extends Plugin
                 
                 // Prefer IPv4 addresses first for better compatibility with local networks
                 for (InetAddress address : addresses) {
-                    if (address instanceof java.net.Inet4Address) {
+                    if (address instanceof Inet4Address) {
                         result.add(address);
                     }
                 }
                 
                 // Then add IPv6 addresses as fallback
                 for (InetAddress address : addresses) {
-                    if (address instanceof java.net.Inet6Address) {
+                    if (address instanceof Inet6Address) {
                         result.add(address);
                     }
                 }
