@@ -72,9 +72,9 @@ public class HomeAssistantPluginReceiver extends com.fr3ts0n.androbd.plugin.Plug
         }
         
         // Create PendingIntent with FLAG_IMMUTABLE for security (required on Android 12+)
-        // Generate requestCode from a wrapping counter to avoid overflow issues
-        // Use bitwise AND to ensure positive values (equivalent to modulo but handles negatives)
-        int requestCode = requestCounter.incrementAndGet() & Integer.MAX_VALUE;
+        // Generate unique requestCode from counter with proper wraparound
+        // Ensure positive values by taking absolute value after increment
+        int requestCode = Math.abs(requestCounter.incrementAndGet());
         
         // FLAG_IMMUTABLE is available from API 23 (M) onwards
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
@@ -111,9 +111,8 @@ public class HomeAssistantPluginReceiver extends com.fr3ts0n.androbd.plugin.Plug
                         pendingIntent
                     );
                     Log.w(TAG, "Service start scheduled via inexact alarm because exact alarms are not permitted. " +
-                            "Execution may be significantly delayed by power-saving modes. " +
-                            "Time-sensitive functionality may not work properly unless exact alarms are allowed " +
-                            "(SCHEDULE_EXACT_ALARM or corresponding system setting).");
+                            "Execution may be significantly delayed by power-saving modes. Time-sensitive " +
+                            "functionality may not work properly unless exact alarms are allowed.");
                 }
             } else {
                 // Android 12 (API 31-32 / S and S_V2): exact alarms always permitted
