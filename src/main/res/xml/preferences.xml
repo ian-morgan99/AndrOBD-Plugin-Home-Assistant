@@ -74,4 +74,24 @@
         android:summary="@string/data_items_description"
         android:title="@string/data_items"/>
 
+    <CheckBoxPreference
+        android:defaultValue="false"
+        android:key="ha_use_mobile_data"
+        android:dependency="ha_enabled"
+        android:summary="@string/ha_use_mobile_data_description"
+        android:title="@string/ha_use_mobile_data"/>
+
+    <CheckBoxPreference
+        android:defaultValue="false"
+        android:key="ha_enable_logging"
+        android:dependency="ha_enabled"
+        android:summary="@string/ha_enable_logging_description"
+        android:title="@string/ha_enable_logging"/>
+
+    <Preference
+        android:key="ha_show_logs"
+        android:dependency="ha_enabled"
+        android:summary="@string/ha_show_logs_description"
+        android:title="@string/ha_show_logs"/>
+
 </PreferenceScreen>

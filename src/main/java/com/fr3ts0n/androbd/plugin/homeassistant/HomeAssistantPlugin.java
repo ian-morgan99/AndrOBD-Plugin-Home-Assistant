@@ -10,6 +10,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.net.NetworkInfo;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiConfiguration;
@@ -53,8 +55,12 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 
+import java.net.Socket;
 import java.util.Set;
+
+import javax.net.SocketFactory;
 
 /**
  * Home Assistant plugin for AndrOBD
@@ -91,6 +97,8 @@ public class HomeAssistantPlugin extends Plugin
     public static final String PREF_HA_UPDATE_INTERVAL = "ha_update_interval";
     public static final String PREF_HA_TRANSMISSION_MODE = "ha_transmission_mode";
     public static final String PREF_HA_ENTITY_PREFIX = "ha_entity_prefix";
+    public static final String PREF_HA_USE_MOBILE_DATA = "ha_use_mobile_data";
+    public static final String PREF_HA_ENABLE_LOGGING = "ha_enable_logging";
     public static final String ITEMS_SELECTED = "items_selected";
     public static final String ITEMS_KNOWN = "items_known";
 
@@ -102,6 +110,8 @@ public class HomeAssistantPlugin extends Plugin
     private WifiManager wifiManager;
     private ConnectivityManager connectivityManager;
     private NotificationManager notificationManager;
+    private LogManager logManager;
+    private DataDbHelper dbHelper;
 
     // Data storage
     private final Map<String, String> dataCache = new HashMap<>();
@@ -109,6 +119,7 @@ public class HomeAssistantPlugin extends Plugin
     private static final int MSG_CHECK_WIFI = 2;
     private static final int MSG_SWITCH_TO_HOME = 3;
     private static final int MSG_SWITCH_TO_OBD = 4;
+    private static final int MSG_CLEANUP_OLD_DATA = 5;
     private long updateInterval = 5000; // Default 5 seconds
     private long wifiCheckInterval = 30000; // Check WiFi every 30 seconds
     private long switchDelay = 5000; // Wait 5 seconds for stable connection after switch
@@ -117,6 +128,7 @@ public class HomeAssistantPlugin extends Plugin
     private String targetSSID = "";
     private String obdSSID = "";
     private boolean autoSwitch = false;
+    private boolean useMobileData = false;
     
     // WiFi state tracking
     private boolean isHomeWifiInRange = false;
@@ -148,6 +160,15 @@ public class HomeAssistantPlugin extends Plugin
         prefs = PreferenceManager.getDefaultSharedPreferences(this);
         prefs.registerOnSharedPreferenceChangeListener(this);
         
+        // Initialize log manager
+        logManager = new LogManager(this);
+        logManager.setLoggingEnabled(prefs.getBoolean(PREF_HA_ENABLE_LOGGING, false));
+        logManager.logInfo("Plugin onCreate - initializing");
+        
+        // Initialize database helper
+        dbHelper = new DataDbHelper(this);
+        logManager.logInfo("Database initialized");
+        
         // Load all preferences (includes update interval, transmission mode, SSIDs, etc.)
         onSharedPreferenceChanged(prefs, null);
 
@@ -158,6 +179,7 @@ public class HomeAssistantPlugin extends Plugin
         // Log warning if critical services are unavailable
         if (wifiManager == null) {
             Log.w(TAG, "WifiManager is null - WiFi state detection will not work");
+            logManager.logWarning("WifiManager is null - WiFi state detection will not work");
         }
 
         // Initialize HTTP client with increased timeouts for reliability
@@ -172,11 +194,18 @@ public class HomeAssistantPlugin extends Plugin
                 .dns(new DualStackDns())               // Better DNS resolution with IPv4/IPv6 fallback
                 .build();
         
+        logManager.logInfo("HTTP client initialized with extended timeouts");
+        
         // Initialize WiFi state and update notification to show accurate status
         checkWifiState();
         
         // Start WiFi monitoring if needed
         scheduleWifiCheck();
+        
+        // Schedule periodic cleanup of old sent data
+        scheduleDataCleanup();
+        
+        logManager.logInfo("Plugin initialization complete");
     }
 
     /**
@@ -274,11 +303,117 @@ public class HomeAssistantPlugin extends Plugin
             notificationManager.notify(NOTIFICATION_ID, createNotification());
         }
     }
+    
+    /**
+     * Get mobile network if available (Android 5.0+)
+     * Returns null on older Android versions or if mobile network is not available
+     */
+    private Network getMobileNetwork() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
+            return null;
+        }
+        
+        if (connectivityManager == null) {
+            return null;
+        }
+        
+        try {
+            Network[] networks = connectivityManager.getAllNetworks();
+            for (Network network : networks) {
+                NetworkCapabilities capabilities = connectivityManager.getNetworkCapabilities(network);
+                if (capabilities != null) {
+                    // Check if this is a cellular network with internet capability
+                    if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) &&
+                        capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
+                        logManager.logDebug("Found mobile network: " + network);
+                        return network;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logManager.logError("Error detecting mobile network", e);
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Get OkHttpClient configured for the current network settings
+     * If useMobileData is enabled and mobile network is available, binds to mobile network
+     */
+    private OkHttpClient getConfiguredHttpClient() {
+        // If mobile data routing is disabled, use default client
+        if (!useMobileData) {
+            return httpClient;
+        }
+        
+        // Try to get mobile network
+        Network mobileNetwork = getMobileNetwork();
+        if (mobileNetwork == null) {
+            logManager.logDebug("Mobile data requested but not available, using default network");
+            return httpClient;
+        }
+        
+        // Build client with mobile network binding (Android 5.0+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            try {
+                logManager.logInfo("Creating HTTP client bound to mobile network");
+                return httpClient.newBuilder()
+                        .socketFactory(new NetworkBoundSocketFactory(mobileNetwork))
+                        .build();
+            } catch (Exception e) {
+                logManager.logError("Failed to create network-bound client", e);
+                return httpClient;
+            }
+        }
+        
+        return httpClient;
+    }
+    
+    /**
+     * SocketFactory that binds sockets to a specific network
+     * Requires Android 5.0+ (API 21+)
+     */
+    @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
+    private static class NetworkBoundSocketFactory extends SocketFactory {
+        private final Network network;
+        
+        NetworkBoundSocketFactory(Network network) {
+            this.network = network;
+        }
+        
+        @Override
+        public Socket createSocket() throws IOException {
+            return network.getSocketFactory().createSocket();
+        }
+        
+        @Override
+        public Socket createSocket(String host, int port) throws IOException {
+            return network.getSocketFactory().createSocket(host, port);
+        }
+        
+        @Override
+        public Socket createSocket(String host, int port, InetAddress localHost, int localPort) throws IOException {
+            return network.getSocketFactory().createSocket(host, port, localHost, localPort);
+        }
+        
+        @Override
+        public Socket createSocket(InetAddress host, int port) throws IOException {
+            return network.getSocketFactory().createSocket(host, port);
+        }
+        
+        @Override
+        public Socket createSocket(InetAddress address, int port, InetAddress localAddress, int localPort) throws IOException {
+            return network.getSocketFactory().createSocket(address, port, localAddress, localPort);
+        }
+    }
 
     @Override
     public void onDestroy() {
         super.onDestroy();
         Log.d(TAG, "Plugin destroyed");
+        
+        logManager.logInfo("Plugin onDestroy - cleaning up");
         
         // Stop foreground service and remove notification
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -293,6 +428,10 @@ public class HomeAssistantPlugin extends Plugin
         
         if (prefs != null) {
             prefs.unregisterOnSharedPreferenceChangeListener(this);
+        }
+        
+        if (dbHelper != null) {
+            dbHelper.close();
         }
     }
 
@@ -323,6 +462,14 @@ public class HomeAssistantPlugin extends Plugin
         }
         
         if (shouldCache) {
+            // Store in database with timestamp
+            long timestamp = System.currentTimeMillis();
+            DataRecord record = new DataRecord(key, value, timestamp);
+            long recordId = dbHelper.insertRecord(record);
+            
+            logManager.logDebug("Data received: " + key + " = " + value + " (id=" + recordId + ", ts=" + timestamp + ")");
+            
+            // Also keep in cache for backwards compatibility
             synchronized (dataCache) {
                 dataCache.put(key, value);
             }
@@ -354,8 +501,38 @@ public class HomeAssistantPlugin extends Plugin
         } else if (msg.what == MSG_SWITCH_TO_OBD) {
             performNetworkSwitch(obdSSID, false);
             return true;
+        } else if (msg.what == MSG_CLEANUP_OLD_DATA) {
+            cleanupOldData();
+            scheduleDataCleanup();
+            return true;
         }
         return false;
+    }
+    
+    /**
+     * Schedule periodic cleanup of old sent data
+     */
+    private void scheduleDataCleanup() {
+        if (handler != null) {
+            handler.removeMessages(MSG_CLEANUP_OLD_DATA);
+            // Run cleanup every hour
+            handler.sendEmptyMessageDelayed(MSG_CLEANUP_OLD_DATA, 60 * 60 * 1000);
+        }
+    }
+    
+    /**
+     * Clean up old sent data (older than 24 hours)
+     */
+    private void cleanupOldData() {
+        try {
+            long cutoffTime = System.currentTimeMillis() - (24 * 60 * 60 * 1000); // 24 hours ago
+            int deletedCount = dbHelper.deleteOldSentRecords(cutoffTime);
+            if (deletedCount > 0) {
+                logManager.logInfo("Cleaned up " + deletedCount + " old sent records");
+            }
+        } catch (Exception e) {
+            logManager.logError("Error cleaning up old data", e);
+        }
     }
 
     /**
@@ -393,6 +570,7 @@ public class HomeAssistantPlugin extends Plugin
                     // Only update notification if we have WiFi info
                     if (currentSSID != null) {
                         stateChanged = true; // Update notification to show current state
+                        logManager.logDebug("WiFi check: Connected to " + currentSSID + " (no home WiFi configured)");
                     }
                 }
             }
@@ -408,6 +586,10 @@ public class HomeAssistantPlugin extends Plugin
         isConnectedToHomeWifi = isConnectedToSSID(targetSSID);
         stateChanged = (wasConnectedToHomeWifi != isConnectedToHomeWifi);
         
+        if (stateChanged) {
+            logManager.logInfo("Home WiFi connection changed: " + wasConnectedToHomeWifi + " -> " + isConnectedToHomeWifi);
+        }
+        
         // Check if target WiFi is in range (only for ssid_in_range mode to avoid unnecessary scans)
         if ("ssid_in_range".equals(transmissionMode)) {
             isHomeWifiInRange = isSSIDInRange(targetSSID);
@@ -421,12 +603,17 @@ public class HomeAssistantPlugin extends Plugin
                        ", Connected: " + isConnectedToHomeWifi + 
                        ", OBD in range: " + isOBDWifiInRange);
             
+            logManager.logDebug("WiFi state - Home in range: " + isHomeWifiInRange + 
+                       ", Connected: " + isConnectedToHomeWifi + 
+                       ", OBD in range: " + isOBDWifiInRange);
+            
             // Handle automatic WiFi switching
             if (autoSwitch && !isSwitchingNetwork) {
                 handleAutoSwitch();
             }
         } else if ("ssid_connected".equals(transmissionMode)) {
             Log.d(TAG, "WiFi state - Connected: " + isConnectedToHomeWifi);
+            logManager.logDebug("WiFi state - Connected: " + isConnectedToHomeWifi);
         }
         
         // Update notification once at the end if state changed or for initial check
@@ -515,20 +702,20 @@ public class HomeAssistantPlugin extends Plugin
         }
         
         // Check if we have buffered data to transmit
-        boolean hasDataToSend = false;
-        synchronized (dataCache) {
-            hasDataToSend = !dataCache.isEmpty();
-        }
+        long unsentCount = dbHelper.getUnsentRecordCount();
+        boolean hasDataToSend = unsentCount > 0;
         
         // Decision logic for automatic switching
         if (hasDataToSend && isHomeWifiInRange && !isConnectedToHomeWifi) {
             // We have data to send and home WiFi is in range but not connected
+            logManager.logInfo("Auto-switch: Switching to home WiFi to transmit " + unsentCount + " buffered records");
             Log.i(TAG, "Auto-switch: Switching to home WiFi to transmit buffered data");
             hasPendingTransmission = true;
             handler.sendEmptyMessage(MSG_SWITCH_TO_HOME);
         } else if (hasPendingTransmission && isConnectedToHomeWifi) {
             // We switched to home WiFi, transmission should happen automatically
             // After successful transmission, switch back to OBD WiFi
+            logManager.logInfo("Auto-switch: Connected to home WiFi, data transmission will occur");
             Log.i(TAG, "Auto-switch: Connected to home WiFi, data transmission will occur");
             hasPendingTransmission = false;
             
@@ -537,6 +724,7 @@ public class HomeAssistantPlugin extends Plugin
             handler.sendEmptyMessageDelayed(MSG_SWITCH_TO_OBD, transmissionTimeout);
         } else if (!isHomeWifiInRange && isOBDWifiInRange && !isConnectedToSSID(obdSSID)) {
             // Home WiFi not in range, OBD WiFi is available but not connected
+            logManager.logInfo("Auto-switch: Switching back to OBD WiFi to continue data collection");
             Log.i(TAG, "Auto-switch: Switching back to OBD WiFi to continue data collection");
             handler.sendEmptyMessage(MSG_SWITCH_TO_OBD);
         }
@@ -552,6 +740,7 @@ public class HomeAssistantPlugin extends Plugin
      */
     private void performNetworkSwitch(String ssid, boolean isHomeNetwork) {
         if (handler == null || wifiManager == null || ssid == null || ssid.isEmpty()) {
+            logManager.logWarning("Cannot switch network - handler, WiFi manager not available or SSID empty");
             Log.w(TAG, "Cannot switch network - handler, WiFi manager not available or SSID empty");
             return;
         }
@@ -560,12 +749,14 @@ public class HomeAssistantPlugin extends Plugin
         String ssidClean = ssid.replace("\"", "");
         
         try {
+            logManager.logInfo("Attempting to switch to network: " + (isHomeNetwork ? "Home WiFi" : "OBD WiFi"));
             Log.i(TAG, "Attempting to switch to network: " + ssidClean);
             
             // Get list of configured networks
             // NOTE: Returns null on Android 10+ due to privacy restrictions
             List<WifiConfiguration> configuredNetworks = wifiManager.getConfiguredNetworks();
             if (configuredNetworks == null) {
+                logManager.logError("Could not get configured networks - may not work on Android 10+");
                 Log.e(TAG, "Could not get configured networks - may not work on Android 10+ or need CHANGE_WIFI_STATE permission");
                 isSwitchingNetwork = false;
                 return;
@@ -582,6 +773,7 @@ public class HomeAssistantPlugin extends Plugin
             }
             
             if (networkId == -1) {
+                logManager.logWarning("Network not found in configured networks. Please connect to it manually first.");
                 Log.w(TAG, "Network " + ssidClean + " not found in configured networks. Please connect to it manually first.");
                 isSwitchingNetwork = false;
                 return;
@@ -593,6 +785,7 @@ public class HomeAssistantPlugin extends Plugin
             // Enable the target network (deprecated in API 29+, requires device/profile owner on 29+)
             boolean enabled = wifiManager.enableNetwork(networkId, true);
             if (!enabled) {
+                logManager.logError("Failed to enable network");
                 Log.e(TAG, "Failed to enable network: " + ssidClean);
                 isSwitchingNetwork = false;
                 return;
@@ -601,11 +794,13 @@ public class HomeAssistantPlugin extends Plugin
             // Reconnect to the network (deprecated in API 29+)
             boolean reconnected = wifiManager.reconnect();
             if (!reconnected) {
+                logManager.logError("Failed to reconnect to network");
                 Log.e(TAG, "Failed to reconnect to network: " + ssidClean);
                 isSwitchingNetwork = false;
                 return;
             }
             
+            logManager.logInfo("Successfully initiated network switch. Waiting for connection to stabilize...");
             Log.i(TAG, "Successfully initiated switch to: " + ssidClean + ". Waiting for connection to stabilize...");
             
             // Wait for connection to stabilize before marking switch as complete
@@ -618,19 +813,24 @@ public class HomeAssistantPlugin extends Plugin
                     checkWifiState();
                     
                     if (isHomeNetwork && isConnectedToHomeWifi) {
+                        logManager.logInfo("Successfully connected to home WiFi, ready for transmission");
                         Log.i(TAG, "Successfully connected to home WiFi, ready for transmission");
                     } else if (!isHomeNetwork && isConnectedToSSID(obdSSID)) {
+                        logManager.logInfo("Successfully switched to OBD WiFi, resuming data collection");
                         Log.i(TAG, "Successfully switched to OBD WiFi, resuming data collection");
                     } else {
+                        logManager.logWarning("Network switch may not have completed successfully");
                         Log.w(TAG, "Network switch may not have completed successfully");
                     }
                 }
             }, switchDelay);
             
         } catch (SecurityException e) {
+            logManager.logError("Security exception during network switch - CHANGE_WIFI_STATE permission required", e);
             Log.e(TAG, "Security exception during network switch - CHANGE_WIFI_STATE permission required", e);
             isSwitchingNetwork = false;
         } catch (Exception e) {
+            logManager.logError("Error switching network", e);
             Log.e(TAG, "Error switching network", e);
             isSwitchingNetwork = false;
         }
@@ -708,6 +908,7 @@ public class HomeAssistantPlugin extends Plugin
     private void sendDataToHomeAssistant() {
         // Check if we should send based on transmission mode and WiFi state
         if (!shouldSendData()) {
+            logManager.logDebug("Not sending data - transmission mode conditions not met (mode: " + transmissionMode + ")");
             Log.d(TAG, "Not sending data - transmission mode conditions not met (mode: " + transmissionMode + ")");
             return;
         }
@@ -717,22 +918,34 @@ public class HomeAssistantPlugin extends Plugin
         String entityPrefix = prefs.getString(PREF_HA_ENTITY_PREFIX, "sensor.androbd_");
 
         if (url.isEmpty() || token.isEmpty()) {
+            logManager.logWarning("Home Assistant URL or token not configured");
             Log.w(TAG, "Home Assistant URL or token not configured");
             return;
         }
 
-        Map<String, String> dataToSend;
-        synchronized (dataCache) {
-            dataToSend = new HashMap<>(dataCache);
-            dataCache.clear();
-        }
-
-        if (dataToSend.isEmpty()) {
+        // Get unsent records from database
+        List<DataRecord> unsentRecords = dbHelper.getUnsentRecords();
+        
+        if (unsentRecords.isEmpty()) {
+            logManager.logDebug("No unsent records to transmit");
             return;
         }
+        
+        logManager.logInfo("Transmitting " + unsentRecords.size() + " unsent records to Home Assistant");
 
-        for (Map.Entry<String, String> entry : dataToSend.entrySet()) {
-            sendSensorUpdate(url, token, entityPrefix, entry.getKey(), entry.getValue());
+        // Group records by key to send latest value for each key
+        Map<String, DataRecord> latestByKey = new HashMap<>();
+        for (DataRecord record : unsentRecords) {
+            String key = record.getKey();
+            if (!latestByKey.containsKey(key) || 
+                record.getTimestamp() > latestByKey.get(key).getTimestamp()) {
+                latestByKey.put(key, record);
+            }
+        }
+
+        // Send each unique key's latest record
+        for (DataRecord record : latestByKey.values()) {
+            sendSensorUpdate(url, token, entityPrefix, record);
         }
     }
 
@@ -764,7 +977,11 @@ public class HomeAssistantPlugin extends Plugin
     /**
      * Send individual sensor update to Home Assistant
      */
-    private void sendSensorUpdate(String baseUrl, String token, String entityPrefix, String key, String value) {
+    private void sendSensorUpdate(String baseUrl, String token, String entityPrefix, DataRecord record) {
+        String key = record.getKey();
+        String value = record.getValue();
+        long timestamp = record.getTimestamp();
+        
         // Clean up the key to make it a valid entity ID
         String entityId = entityPrefix + key.toLowerCase()
                 .replaceAll("[^a-z0-9_]", "_")
@@ -779,6 +996,7 @@ public class HomeAssistantPlugin extends Plugin
             JSONObject attributes = new JSONObject();
             attributes.put("friendly_name", key);
             attributes.put("source", "AndrOBD");
+            attributes.put("timestamp", timestamp);
             json.put("attributes", attributes);
 
             RequestBody body = RequestBody.create(
@@ -786,16 +1004,22 @@ public class HomeAssistantPlugin extends Plugin
                     MediaType.parse("application/json")
             );
 
-            Request request = new Request.Builder()
+            Request.Builder requestBuilder = new Request.Builder()
                     .url(url)
                     .header("Authorization", "Bearer " + token)
                     .header("Content-Type", "application/json")
-                    .post(body)
-                    .build();
+                    .post(body);
+            
+            Request request = requestBuilder.build();
+            
+            logManager.logDebug("Sending " + key + " = " + value + " (ts=" + timestamp + ") to " + entityId);
 
-            httpClient.newCall(request).enqueue(new Callback() {
+            // Use configured HTTP client (may be bound to mobile network)
+            OkHttpClient clientToUse = getConfiguredHttpClient();
+            clientToUse.newCall(request).enqueue(new Callback() {
                 @Override
                 public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                    logManager.logError("Network error sending update for " + key + ": " + e.getMessage());
                     Log.e(TAG, "Network error sending update for " + key + ": " + e.getMessage(), e);
                     // Data will remain in cache and retry on next update cycle
                 }
@@ -804,14 +1028,19 @@ public class HomeAssistantPlugin extends Plugin
                 public void onResponse(@NonNull Call call, @NonNull Response response) {
                     try {
                         if (response.isSuccessful()) {
+                            logManager.logInfo("Successfully sent " + key + " (id=" + record.getId() + ")");
                             Log.d(TAG, "Successfully updated " + entityId);
+                            // Mark record as sent in database
+                            dbHelper.markAsSent(record.getId());
                         } else {
+                            logManager.logError("HTTP error updating " + entityId + ": " + response.code() + " " + response.message());
                             Log.e(TAG, "HTTP error updating " + entityId + ": " + response.code() + " " + response.message());
                             // Log response body for debugging if available
                             if (response.body() != null) {
                                 try {
                                     String responseBody = response.body().string();
                                     if (responseBody != null && !responseBody.isEmpty()) {
+                                        logManager.logError("Response body: " + responseBody);
                                         Log.e(TAG, "Response body: " + responseBody);
                                     }
                                 } catch (IOException e) {
@@ -825,8 +1054,10 @@ public class HomeAssistantPlugin extends Plugin
                 }
             });
         } catch (JSONException e) {
+            logManager.logError("Error creating JSON for " + key, e);
             Log.e(TAG, "Error creating JSON for " + key, e);
         } catch (Exception e) {
+            logManager.logError("Unexpected error sending update for " + key, e);
             Log.e(TAG, "Unexpected error sending update for " + key, e);
         }
     }
@@ -862,6 +1093,7 @@ public class HomeAssistantPlugin extends Plugin
                 String intervalStr = sharedPreferences.getString(key, "5");
                 try {
                     updateInterval = Long.parseLong(intervalStr) * 1000;
+                    logManager.logInfo("Update interval changed to " + updateInterval + "ms");
                 } catch (NumberFormatException e) {
                     updateInterval = 5000;
                 }
@@ -869,6 +1101,7 @@ public class HomeAssistantPlugin extends Plugin
                 
             case PREF_HA_TRANSMISSION_MODE:
                 transmissionMode = sharedPreferences.getString(key, "realtime");
+                logManager.logInfo("Transmission mode changed to: " + transmissionMode);
                 Log.d(TAG, "Transmission mode changed to: " + transmissionMode);
                 // Reschedule WiFi checking based on new mode
                 if (handler != null) {
@@ -881,6 +1114,7 @@ public class HomeAssistantPlugin extends Plugin
                 
             case PREF_HA_SSID:
                 targetSSID = sharedPreferences.getString(key, "");
+                logManager.logInfo("Home SSID changed");
                 Log.d(TAG, "Home SSID changed to: " + targetSSID);
                 // Check WiFi state immediately when SSID changes
                 checkWifiState();
@@ -888,6 +1122,7 @@ public class HomeAssistantPlugin extends Plugin
                 
             case PREF_HA_OBD_SSID:
                 obdSSID = sharedPreferences.getString(key, "");
+                logManager.logInfo("OBD SSID changed");
                 Log.d(TAG, "OBD SSID changed to: " + obdSSID);
                 // Check WiFi state immediately when SSID changes
                 checkWifiState();
@@ -895,11 +1130,26 @@ public class HomeAssistantPlugin extends Plugin
                 
             case PREF_HA_AUTO_SWITCH:
                 autoSwitch = sharedPreferences.getBoolean(key, false);
+                logManager.logInfo("Auto-switch changed to: " + autoSwitch);
                 Log.d(TAG, "Auto-switch changed to: " + autoSwitch);
                 if (autoSwitch) {
                     if (targetSSID.isEmpty() || obdSSID.isEmpty()) {
+                        logManager.logWarning("Auto-switch enabled but SSIDs not fully configured");
                         Log.w(TAG, "Auto-switch enabled but SSIDs not fully configured");
                     }
+                }
+                break;
+                
+            case PREF_HA_USE_MOBILE_DATA:
+                useMobileData = sharedPreferences.getBoolean(key, false);
+                logManager.logInfo("Use mobile data changed to: " + useMobileData);
+                break;
+                
+            case PREF_HA_ENABLE_LOGGING:
+                boolean loggingEnabled = sharedPreferences.getBoolean(key, false);
+                if (logManager != null) {
+                    logManager.setLoggingEnabled(loggingEnabled);
+                    logManager.logInfo("Logging " + (loggingEnabled ? "enabled" : "disabled"));
                 }
                 break;
                 
@@ -908,6 +1158,7 @@ public class HomeAssistantPlugin extends Plugin
                 synchronized (this) {
                     mSelectedItems = new HashSet<>(selectedSet);
                 }
+                logManager.logInfo("Selected items changed: " + mSelectedItems.size() + " items");
                 break;
                 
             case ITEMS_KNOWN:
@@ -915,6 +1166,7 @@ public class HomeAssistantPlugin extends Plugin
                 synchronized (this) {
                     mKnownItems = new HashSet<>(knownSet);
                 }
+                logManager.logDebug("Known items updated: " + mKnownItems.size() + " items");
                 break;
         }
     }
@@ -931,6 +1183,8 @@ public class HomeAssistantPlugin extends Plugin
         onSharedPreferenceChanged(prefs, PREF_HA_SSID);
         onSharedPreferenceChanged(prefs, PREF_HA_OBD_SSID);
         onSharedPreferenceChanged(prefs, PREF_HA_AUTO_SWITCH);
+        onSharedPreferenceChanged(prefs, PREF_HA_USE_MOBILE_DATA);
+        onSharedPreferenceChanged(prefs, PREF_HA_ENABLE_LOGGING);
         onSharedPreferenceChanged(prefs, ITEMS_SELECTED);
         onSharedPreferenceChanged(prefs, ITEMS_KNOWN);
     }

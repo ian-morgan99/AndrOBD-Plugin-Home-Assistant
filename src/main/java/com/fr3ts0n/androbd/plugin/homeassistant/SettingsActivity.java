@@ -38,6 +38,7 @@ public class SettingsActivity extends Activity {
         
         private SharedPreferences prefs;
         private MultiSelectListPreference dataItemsPref;
+        private Preference showLogsPref;
         
         @Override
         public void onCreate(Bundle savedInstanceState) {
@@ -51,6 +52,19 @@ public class SettingsActivity extends Activity {
             // Setup data items preference
             dataItemsPref = (MultiSelectListPreference) findPreference(HomeAssistantPlugin.ITEMS_SELECTED);
             updateDataItemsList();
+            
+            // Setup show logs preference click handler
+            showLogsPref = findPreference("ha_show_logs");
+            if (showLogsPref != null) {
+                showLogsPref.setOnPreferenceClickListener(new Preference.OnPreferenceClickListener() {
+                    @Override
+                    public boolean onPreferenceClick(Preference preference) {
+                        android.content.Intent intent = new android.content.Intent(getActivity(), LogViewerActivity.class);
+                        startActivity(intent);
+                        return true;
+                    }
+                });
+            }
             
             // Set summary updaters for all preferences
             updateAllSummaries();
