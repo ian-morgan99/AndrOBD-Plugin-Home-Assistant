@@ -77,22 +77,21 @@ public class HomeAssistantPluginReceiver extends com.fr3ts0n.androbd.plugin.Plug
         try {
             // Schedule exact alarm for immediate execution
             // This creates an exempted context for foreground service start
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                alarmManager.setExactAndAllowWhileIdle(
-                    AlarmManager.RTC_WAKEUP,
-                    System.currentTimeMillis() + ALARM_DELAY_MS,
-                    pendingIntent
-                );
-            } else {
-                alarmManager.setExact(
-                    AlarmManager.RTC_WAKEUP,
-                    System.currentTimeMillis() + ALARM_DELAY_MS,
-                    pendingIntent
-                );
-            }
+            // Note: setExactAndAllowWhileIdle is always available since this code
+            // only runs on Android 12+ (API 31) which is >= API 23
+            alarmManager.setExactAndAllowWhileIdle(
+                AlarmManager.RTC_WAKEUP,
+                System.currentTimeMillis() + ALARM_DELAY_MS,
+                pendingIntent
+            );
             Log.d(TAG, "Service start scheduled via AlarmManager for Android 12+");
         } catch (SecurityException e) {
-            Log.e(TAG, "SecurityException scheduling alarm - SCHEDULE_EXACT_ALARM permission may be missing", e);
+            // If alarm scheduling fails, fall back to direct service start
+            // This may still fail with ForegroundServiceStartNotAllowedException,
+            // but it's better than silently doing nothing
+            Log.e(TAG, "SecurityException scheduling alarm - attempting direct service start as fallback", e);
+            intent.setClass(context, getPluginClass());
+            context.startForegroundService(intent);
         }
     }
 }
