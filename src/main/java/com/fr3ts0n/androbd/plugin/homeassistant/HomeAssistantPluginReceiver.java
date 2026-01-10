@@ -7,6 +7,8 @@ import android.content.Intent;
 import android.os.Build;
 import android.util.Log;
 
+import java.util.concurrent.atomic.AtomicInteger;
+
 /**
  * Plugin broadcast receiver for Home Assistant plugin
  * Handles service start with Android 12+ background service restrictions
@@ -17,8 +19,8 @@ public class HomeAssistantPluginReceiver extends com.fr3ts0n.androbd.plugin.Plug
     // Minimal delay for AlarmManager scheduling (1ms for immediate execution)
     private static final long ALARM_DELAY_MS = 1;
     
-    // Counter to prevent PendingIntent collisions
-    private static int requestCounter = 0;
+    // Counter to prevent PendingIntent collisions (thread-safe)
+    private static final AtomicInteger requestCounter = new AtomicInteger(0);
     
     @Override
     public Class<?> getPluginClass() {
@@ -71,10 +73,9 @@ public class HomeAssistantPluginReceiver extends com.fr3ts0n.androbd.plugin.Plug
         
         // Create PendingIntent with FLAG_IMMUTABLE for security (required on Android 12+)
         // Use timestamp with counter to avoid PendingIntent collisions
-        int requestCode;
-        synchronized (HomeAssistantPluginReceiver.class) {
-            requestCode = (int) ((System.currentTimeMillis() & 0xFFFF) | (requestCounter++ << 16));
-        }
+        // Combine lower 16 bits of timestamp with counter (mod 65536) in upper 16 bits
+        int requestCode = (int) ((System.currentTimeMillis() & 0xFFFF) | 
+                                  ((requestCounter.getAndIncrement() & 0xFFFF) << 16));
         PendingIntent pendingIntent = PendingIntent.getBroadcast(
             context, 
             requestCode, 
