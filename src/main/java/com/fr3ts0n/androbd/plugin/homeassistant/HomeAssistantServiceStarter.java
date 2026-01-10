@@ -27,6 +27,8 @@ public class HomeAssistantServiceStarter extends BroadcastReceiver {
         
         // Start foreground service
         // This is allowed here because we're in an alarm context (exempted scenario)
+        // Note: Version check kept for defensive programming, though this receiver
+        // is only used on Android 12+ where startForegroundService is required
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.startForegroundService(serviceIntent);
         } else {

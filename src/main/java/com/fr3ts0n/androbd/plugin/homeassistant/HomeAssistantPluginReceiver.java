@@ -14,6 +14,9 @@ import android.util.Log;
 public class HomeAssistantPluginReceiver extends com.fr3ts0n.androbd.plugin.PluginReceiver {
     private static final String TAG = "HomeAssistantPluginReceiver";
     
+    // Minimal delay for AlarmManager scheduling (1ms for immediate execution)
+    private static final long ALARM_DELAY_MS = 1;
+    
     @Override
     public Class<?> getPluginClass() {
         return HomeAssistantPlugin.class;
@@ -61,26 +64,28 @@ public class HomeAssistantPluginReceiver extends com.fr3ts0n.androbd.plugin.Plug
         }
         
         // Create PendingIntent with FLAG_IMMUTABLE for security (required on Android 12+)
+        // Use timestamp as requestCode to avoid PendingIntent collisions
+        int requestCode = (int) (System.currentTimeMillis() % Integer.MAX_VALUE);
         PendingIntent pendingIntent = PendingIntent.getBroadcast(
             context, 
-            0, 
+            requestCode, 
             alarmIntent, 
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
         
         try {
-            // Schedule exact alarm for immediate execution (1ms from now)
+            // Schedule exact alarm for immediate execution
             // This creates an exempted context for foreground service start
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 alarmManager.setExactAndAllowWhileIdle(
                     AlarmManager.RTC_WAKEUP,
-                    System.currentTimeMillis() + 1,
+                    System.currentTimeMillis() + ALARM_DELAY_MS,
                     pendingIntent
                 );
             } else {
                 alarmManager.setExact(
                     AlarmManager.RTC_WAKEUP,
-                    System.currentTimeMillis() + 1,
+                    System.currentTimeMillis() + ALARM_DELAY_MS,
                     pendingIntent
                 );
             }
