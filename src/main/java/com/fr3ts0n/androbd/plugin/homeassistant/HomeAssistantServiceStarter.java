@@ -41,8 +41,14 @@ public class HomeAssistantServiceStarter extends BroadcastReceiver {
         // This receiver is only used on Android 12+ where startForegroundService is available
         try {
             context.startForegroundService(serviceIntent);
+        } catch (IllegalStateException e) {
+            // IllegalStateException includes ForegroundServiceStartNotAllowedException on Android 12+
+            Log.e(TAG, "Failed to start foreground service for action: " + intent.getAction() +
+                    " (may be due to Android 12+ restrictions)", e);
+        } catch (SecurityException e) {
+            Log.e(TAG, "Failed to start foreground service due to security restrictions: " + intent.getAction(), e);
         } catch (Exception e) {
-            Log.e(TAG, "Failed to start foreground service for action: " + intent.getAction(), e);
+            Log.e(TAG, "Unexpected error starting foreground service for action: " + intent.getAction(), e);
         }
     }
 }

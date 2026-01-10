@@ -73,8 +73,8 @@ public class HomeAssistantPluginReceiver extends com.fr3ts0n.androbd.plugin.Plug
         
         // Create PendingIntent with FLAG_IMMUTABLE for security (required on Android 12+)
         // Generate unique requestCode from counter with proper wraparound
-        // Ensure positive values by taking absolute value after increment
-        int requestCode = Math.abs(requestCounter.incrementAndGet());
+        // Use bitwise AND to ensure positive values (handles Integer.MIN_VALUE correctly)
+        int requestCode = requestCounter.incrementAndGet() & 0x7FFFFFFF;
         
         // FLAG_IMMUTABLE is available from API 23 (M) onwards
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
