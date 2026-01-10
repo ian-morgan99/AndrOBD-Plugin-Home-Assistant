@@ -1,7 +1,14 @@
 package com.fr3ts0n.androbd.plugin.homeassistant;
 
+import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.DialogInterface;
+import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.preference.EditTextPreference;
 import android.preference.ListPreference;
@@ -9,16 +16,24 @@ import android.preference.MultiSelectListPreference;
 import android.preference.Preference;
 import android.preference.PreferenceFragment;
 import android.preference.PreferenceManager;
+import android.provider.Settings;
+
+import androidx.annotation.NonNull;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 /**
  * Settings activity for Home Assistant plugin configuration
  */
 public class SettingsActivity extends Activity {
+    
+    private static final int REQUEST_PERMISSIONS = 100;
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -28,6 +43,175 @@ public class SettingsActivity extends Activity {
         getFragmentManager().beginTransaction()
                 .replace(android.R.id.content, new SettingsFragment())
                 .commit();
+        
+        // Check and request permissions on Android 6.0+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            checkAndRequestPermissions();
+        }
+    }
+    
+    /**
+     * Check if required permissions are granted and request if needed
+     */
+    private void checkAndRequestPermissions() {
+        List<String> permissionsNeeded = new ArrayList<>();
+        
+        // Location permissions (required for WiFi scanning on Android 6.0+)
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) 
+                != PackageManager.PERMISSION_GRANTED) {
+            permissionsNeeded.add(Manifest.permission.ACCESS_FINE_LOCATION);
+        }
+        
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) 
+                != PackageManager.PERMISSION_GRANTED) {
+            permissionsNeeded.add(Manifest.permission.ACCESS_COARSE_LOCATION);
+        }
+        
+        // Notification permission (required on Android 13+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) 
+                    != PackageManager.PERMISSION_GRANTED) {
+                permissionsNeeded.add(Manifest.permission.POST_NOTIFICATIONS);
+            }
+        }
+        
+        if (!permissionsNeeded.isEmpty()) {
+            // Show explanation before requesting permissions
+            showPermissionExplanationDialog(permissionsNeeded);
+        }
+    }
+    
+    /**
+     * Show dialog explaining why permissions are needed
+     */
+    private void showPermissionExplanationDialog(final List<String> permissions) {
+        StringBuilder message = new StringBuilder();
+        message.append("This app requires the following permissions:\n\n");
+        
+        boolean hasLocation = false;
+        boolean hasNotification = false;
+        
+        for (String permission : permissions) {
+            if (permission.contains("LOCATION")) {
+                hasLocation = true;
+            } else if (permission.contains("NOTIFICATION")) {
+                hasNotification = true;
+            }
+        }
+        
+        if (hasLocation) {
+            message.append("📍 Location:\n");
+            message.append("• Scan for WiFi networks (required by Android)\n");
+            message.append("• Detect when home network is in range\n");
+            message.append("• Enable automatic WiFi switching\n");
+            message.append("• Future: Send vehicle location to Home Assistant\n\n");
+            message.append("Note: Location is NOT tracked. Only used for WiFi scanning.\n\n");
+        }
+        
+        if (hasNotification) {
+            message.append("🔔 Notifications:\n");
+            message.append("• Display network status indicator\n");
+            message.append("• Show connection/transmission status\n\n");
+        }
+        
+        new AlertDialog.Builder(this)
+            .setTitle("Permissions Required")
+            .setMessage(message.toString())
+            .setPositiveButton("Grant Permission", new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
+                    ActivityCompat.requestPermissions(SettingsActivity.this,
+                        permissions.toArray(new String[0]),
+                        REQUEST_PERMISSIONS);
+                }
+            })
+            .setNegativeButton("Not Now", null)
+            .setNeutralButton("More Info", new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
+                    // Open app settings where user can see and grant permissions
+                    Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                    Uri uri = Uri.fromParts("package", getPackageName(), null);
+                    intent.setData(uri);
+                    startActivity(intent);
+                }
+            })
+            .show();
+    }
+    
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, 
+                                          @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        
+        if (requestCode == REQUEST_PERMISSIONS) {
+            boolean allGranted = true;
+            List<String> deniedPermissions = new ArrayList<>();
+            
+            for (int i = 0; i < permissions.length; i++) {
+                if (grantResults[i] != PackageManager.PERMISSION_GRANTED) {
+                    allGranted = false;
+                    deniedPermissions.add(permissions[i]);
+                }
+            }
+            
+            if (allGranted) {
+                // All permissions granted
+                new AlertDialog.Builder(this)
+                    .setTitle("Permissions Granted")
+                    .setMessage("All required permissions have been granted. The app can now:\n\n" +
+                        "✓ Scan for WiFi networks\n" +
+                        "✓ Detect home network proximity\n" +
+                        "✓ Enable automatic WiFi switching\n" +
+                        "✓ Display status notifications\n" +
+                        "✓ Future: Track vehicle location\n\n" +
+                        "You can revoke these permissions anytime in Android Settings.")
+                    .setPositiveButton("OK", null)
+                    .show();
+            } else {
+                // Some permissions denied
+                showPermissionDeniedDialog(deniedPermissions);
+            }
+        }
+    }
+    
+    /**
+     * Show dialog when permissions are denied
+     */
+    private void showPermissionDeniedDialog(List<String> deniedPermissions) {
+        StringBuilder message = new StringBuilder();
+        message.append("Some permissions were not granted. This will limit functionality:\n\n");
+        
+        for (String permission : deniedPermissions) {
+            if (permission.contains("LOCATION")) {
+                message.append("📍 Location Denied:\n");
+                message.append("• WiFi network scanning disabled\n");
+                message.append("• Cannot detect when home network is in range\n");
+                message.append("• Automatic WiFi switching unavailable\n");
+                message.append("• Location sensor feature unavailable\n\n");
+            } else if (permission.contains("NOTIFICATION")) {
+                message.append("🔔 Notifications Denied:\n");
+                message.append("• Status notifications may not appear\n");
+                message.append("• Network indicator may not display\n\n");
+            }
+        }
+        
+        message.append("You can grant permissions later:\nAndroid Settings → Apps → AndrOBD Home Assistant → Permissions");
+        
+        new AlertDialog.Builder(this)
+            .setTitle("Limited Functionality")
+            .setMessage(message.toString())
+            .setPositiveButton("Open Settings", new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
+                    Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                    Uri uri = Uri.fromParts("package", getPackageName(), null);
+                    intent.setData(uri);
+                    startActivity(intent);
+                }
+            })
+            .setNegativeButton("OK", null)
+            .show();
     }
     
     /**

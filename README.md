@@ -49,6 +49,10 @@ This extension plugin allows AndrOBD to publish OBD-II vehicle data to Home Assi
 - AndrOBD v2.0.0 or higher installed on your device
 - Android 4.0.3 (API 15) or higher
 - Network connectivity (WiFi or mobile data)
+- **Location permission** (required for WiFi network scanning on Android 6.0+)
+- **Notification permission** (required on Android 13+ for status notifications)
+
+**Note:** On first launch, the app will request permissions with a clear explanation of what each is used for. Location permission is required by Android for WiFi scanning and is NOT used to track your location. See [PERMISSIONS_GUIDE.md](PERMISSIONS_GUIDE.md) for details.
 
 ### Testing Without a Vehicle
 
@@ -282,12 +286,14 @@ automation:
 ### WiFi Network Detection Issues
 If the plugin reports WiFi networks are not in range when they actually are, or automatic switching doesn't work:
 
-1. **Enable detailed logging** - The plugin has comprehensive WiFi detection logging
+1. **Grant required permissions** - The app needs location permission for WiFi scanning
+   - Open the plugin app - it will automatically prompt for permissions on first launch
+   - Or go to: Settings → Apps → AndrOBD Home Assistant → Permissions
+   - Grant Location permission (Fine or Coarse)
+   - See [PERMISSIONS_GUIDE.md](PERMISSIONS_GUIDE.md) for why this permission is needed
+2. **Enable detailed logging** - The plugin has comprehensive WiFi detection logging
    - Enable "Enable Logging" in plugin settings
    - Use "View Logs" to see real-time detection information
-2. **Check WiFi permissions** - Location permission is required for WiFi scanning on Android 6+
-   - Go to Settings → Apps → AndrOBD Plugin → Permissions
-   - Grant Location permission (Fine or Coarse)
 3. **Review scan results** - Logs show all networks detected and signal strengths
    - Look for your network in the scan results list
    - Verify SSID spelling matches exactly (case-sensitive)
