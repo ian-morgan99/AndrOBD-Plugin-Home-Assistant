@@ -10,6 +10,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.net.NetworkInfo;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiConfiguration;
@@ -53,8 +55,14 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 
+import java.net.InetSocketAddress;
+import java.net.Proxy;
+import java.net.Socket;
 import java.util.Set;
+
+import javax.net.SocketFactory;
 
 /**
  * Home Assistant plugin for AndrOBD
@@ -295,6 +303,110 @@ public class HomeAssistantPlugin extends Plugin
     private void updateNotification() {
         if (notificationManager != null) {
             notificationManager.notify(NOTIFICATION_ID, createNotification());
+        }
+    }
+    
+    /**
+     * Get mobile network if available (Android 5.0+)
+     * Returns null on older Android versions or if mobile network is not available
+     */
+    private Network getMobileNetwork() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
+            return null;
+        }
+        
+        if (connectivityManager == null) {
+            return null;
+        }
+        
+        try {
+            Network[] networks = connectivityManager.getAllNetworks();
+            for (Network network : networks) {
+                NetworkCapabilities capabilities = connectivityManager.getNetworkCapabilities(network);
+                if (capabilities != null) {
+                    // Check if this is a cellular network with internet capability
+                    if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) &&
+                        capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
+                        logManager.logDebug("Found mobile network: " + network);
+                        return network;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logManager.logError("Error detecting mobile network", e);
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Get OkHttpClient configured for the current network settings
+     * If useMobileData is enabled and mobile network is available, binds to mobile network
+     */
+    private OkHttpClient getConfiguredHttpClient() {
+        // If mobile data routing is disabled, use default client
+        if (!useMobileData) {
+            return httpClient;
+        }
+        
+        // Try to get mobile network
+        Network mobileNetwork = getMobileNetwork();
+        if (mobileNetwork == null) {
+            logManager.logDebug("Mobile data requested but not available, using default network");
+            return httpClient;
+        }
+        
+        // Build client with mobile network binding (Android 5.0+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            try {
+                logManager.logInfo("Creating HTTP client bound to mobile network");
+                return httpClient.newBuilder()
+                        .socketFactory(new NetworkBoundSocketFactory(mobileNetwork))
+                        .build();
+            } catch (Exception e) {
+                logManager.logError("Failed to create network-bound client", e);
+                return httpClient;
+            }
+        }
+        
+        return httpClient;
+    }
+    
+    /**
+     * SocketFactory that binds sockets to a specific network
+     * Requires Android 5.0+ (API 21+)
+     */
+    @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
+    private static class NetworkBoundSocketFactory extends SocketFactory {
+        private final Network network;
+        
+        NetworkBoundSocketFactory(Network network) {
+            this.network = network;
+        }
+        
+        @Override
+        public Socket createSocket() throws IOException {
+            return network.getSocketFactory().createSocket();
+        }
+        
+        @Override
+        public Socket createSocket(String host, int port) throws IOException {
+            return network.getSocketFactory().createSocket(host, port);
+        }
+        
+        @Override
+        public Socket createSocket(String host, int port, InetAddress localHost, int localPort) throws IOException {
+            return network.getSocketFactory().createSocket(host, port, localHost, localPort);
+        }
+        
+        @Override
+        public Socket createSocket(InetAddress host, int port) throws IOException {
+            return network.getSocketFactory().createSocket(host, port);
+        }
+        
+        @Override
+        public Socket createSocket(InetAddress address, int port, InetAddress localAddress, int localPort) throws IOException {
+            return network.getSocketFactory().createSocket(address, port, localAddress, localPort);
         }
     }
 
@@ -592,20 +704,20 @@ public class HomeAssistantPlugin extends Plugin
         }
         
         // Check if we have buffered data to transmit
-        boolean hasDataToSend = false;
-        synchronized (dataCache) {
-            hasDataToSend = !dataCache.isEmpty();
-        }
+        long unsentCount = dbHelper.getUnsentRecordCount();
+        boolean hasDataToSend = unsentCount > 0;
         
         // Decision logic for automatic switching
         if (hasDataToSend && isHomeWifiInRange && !isConnectedToHomeWifi) {
             // We have data to send and home WiFi is in range but not connected
+            logManager.logInfo("Auto-switch: Switching to home WiFi to transmit " + unsentCount + " buffered records");
             Log.i(TAG, "Auto-switch: Switching to home WiFi to transmit buffered data");
             hasPendingTransmission = true;
             handler.sendEmptyMessage(MSG_SWITCH_TO_HOME);
         } else if (hasPendingTransmission && isConnectedToHomeWifi) {
             // We switched to home WiFi, transmission should happen automatically
             // After successful transmission, switch back to OBD WiFi
+            logManager.logInfo("Auto-switch: Connected to home WiFi, data transmission will occur");
             Log.i(TAG, "Auto-switch: Connected to home WiFi, data transmission will occur");
             hasPendingTransmission = false;
             
@@ -614,6 +726,7 @@ public class HomeAssistantPlugin extends Plugin
             handler.sendEmptyMessageDelayed(MSG_SWITCH_TO_OBD, transmissionTimeout);
         } else if (!isHomeWifiInRange && isOBDWifiInRange && !isConnectedToSSID(obdSSID)) {
             // Home WiFi not in range, OBD WiFi is available but not connected
+            logManager.logInfo("Auto-switch: Switching back to OBD WiFi to continue data collection");
             Log.i(TAG, "Auto-switch: Switching back to OBD WiFi to continue data collection");
             handler.sendEmptyMessage(MSG_SWITCH_TO_OBD);
         }
@@ -629,6 +742,7 @@ public class HomeAssistantPlugin extends Plugin
      */
     private void performNetworkSwitch(String ssid, boolean isHomeNetwork) {
         if (handler == null || wifiManager == null || ssid == null || ssid.isEmpty()) {
+            logManager.logWarning("Cannot switch network - handler, WiFi manager not available or SSID empty");
             Log.w(TAG, "Cannot switch network - handler, WiFi manager not available or SSID empty");
             return;
         }
@@ -637,12 +751,14 @@ public class HomeAssistantPlugin extends Plugin
         String ssidClean = ssid.replace("\"", "");
         
         try {
+            logManager.logInfo("Attempting to switch to network: " + (isHomeNetwork ? "Home WiFi" : "OBD WiFi"));
             Log.i(TAG, "Attempting to switch to network: " + ssidClean);
             
             // Get list of configured networks
             // NOTE: Returns null on Android 10+ due to privacy restrictions
             List<WifiConfiguration> configuredNetworks = wifiManager.getConfiguredNetworks();
             if (configuredNetworks == null) {
+                logManager.logError("Could not get configured networks - may not work on Android 10+");
                 Log.e(TAG, "Could not get configured networks - may not work on Android 10+ or need CHANGE_WIFI_STATE permission");
                 isSwitchingNetwork = false;
                 return;
@@ -659,6 +775,7 @@ public class HomeAssistantPlugin extends Plugin
             }
             
             if (networkId == -1) {
+                logManager.logWarning("Network not found in configured networks. Please connect to it manually first.");
                 Log.w(TAG, "Network " + ssidClean + " not found in configured networks. Please connect to it manually first.");
                 isSwitchingNetwork = false;
                 return;
@@ -670,6 +787,7 @@ public class HomeAssistantPlugin extends Plugin
             // Enable the target network (deprecated in API 29+, requires device/profile owner on 29+)
             boolean enabled = wifiManager.enableNetwork(networkId, true);
             if (!enabled) {
+                logManager.logError("Failed to enable network");
                 Log.e(TAG, "Failed to enable network: " + ssidClean);
                 isSwitchingNetwork = false;
                 return;
@@ -678,11 +796,13 @@ public class HomeAssistantPlugin extends Plugin
             // Reconnect to the network (deprecated in API 29+)
             boolean reconnected = wifiManager.reconnect();
             if (!reconnected) {
+                logManager.logError("Failed to reconnect to network");
                 Log.e(TAG, "Failed to reconnect to network: " + ssidClean);
                 isSwitchingNetwork = false;
                 return;
             }
             
+            logManager.logInfo("Successfully initiated network switch. Waiting for connection to stabilize...");
             Log.i(TAG, "Successfully initiated switch to: " + ssidClean + ". Waiting for connection to stabilize...");
             
             // Wait for connection to stabilize before marking switch as complete
@@ -695,19 +815,24 @@ public class HomeAssistantPlugin extends Plugin
                     checkWifiState();
                     
                     if (isHomeNetwork && isConnectedToHomeWifi) {
+                        logManager.logInfo("Successfully connected to home WiFi, ready for transmission");
                         Log.i(TAG, "Successfully connected to home WiFi, ready for transmission");
                     } else if (!isHomeNetwork && isConnectedToSSID(obdSSID)) {
+                        logManager.logInfo("Successfully switched to OBD WiFi, resuming data collection");
                         Log.i(TAG, "Successfully switched to OBD WiFi, resuming data collection");
                     } else {
+                        logManager.logWarning("Network switch may not have completed successfully");
                         Log.w(TAG, "Network switch may not have completed successfully");
                     }
                 }
             }, switchDelay);
             
         } catch (SecurityException e) {
+            logManager.logError("Security exception during network switch - CHANGE_WIFI_STATE permission required", e);
             Log.e(TAG, "Security exception during network switch - CHANGE_WIFI_STATE permission required", e);
             isSwitchingNetwork = false;
         } catch (Exception e) {
+            logManager.logError("Error switching network", e);
             Log.e(TAG, "Error switching network", e);
             isSwitchingNetwork = false;
         }
@@ -891,7 +1016,9 @@ public class HomeAssistantPlugin extends Plugin
             
             logManager.logDebug("Sending " + key + " = " + value + " (ts=" + timestamp + ") to " + entityId);
 
-            httpClient.newCall(request).enqueue(new Callback() {
+            // Use configured HTTP client (may be bound to mobile network)
+            OkHttpClient clientToUse = getConfiguredHttpClient();
+            clientToUse.newCall(request).enqueue(new Callback() {
                 @Override
                 public void onFailure(@NonNull Call call, @NonNull IOException e) {
                     logManager.logError("Network error sending update for " + key + ": " + e.getMessage());
