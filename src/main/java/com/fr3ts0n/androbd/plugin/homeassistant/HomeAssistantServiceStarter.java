@@ -16,12 +16,15 @@ import android.util.Log;
 public class HomeAssistantServiceStarter extends BroadcastReceiver {
     private static final String TAG = "HomeAssistantServiceStarter";
     
+    // Plugin service class to start
+    private static final Class<?> PLUGIN_SERVICE_CLASS = HomeAssistantPlugin.class;
+    
     @Override
     public void onReceive(Context context, Intent intent) {
         Log.d(TAG, "Alarm triggered, starting service: " + intent.getAction());
         
         // Create intent for the plugin service
-        Intent serviceIntent = new Intent(context, HomeAssistantPlugin.class);
+        Intent serviceIntent = new Intent(context, PLUGIN_SERVICE_CLASS);
         serviceIntent.setAction(intent.getAction());
         if (intent.getExtras() != null) {
             serviceIntent.putExtras(intent.getExtras());

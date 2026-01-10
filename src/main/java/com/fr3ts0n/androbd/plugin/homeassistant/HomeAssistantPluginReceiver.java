@@ -87,7 +87,7 @@ public class HomeAssistantPluginReceiver extends com.fr3ts0n.androbd.plugin.Plug
             // Note: setExactAndAllowWhileIdle is always available since this code
             // only runs on Android 12+ (API 31) which is >= API 23
             
-            // On Android 13+ (API 33), check if exact alarms are permitted
+            // On Android 13+ (API 33 / TIRAMISU), check if exact alarms are permitted
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 if (alarmManager.canScheduleExactAlarms()) {
                     alarmManager.setExactAndAllowWhileIdle(
@@ -106,7 +106,7 @@ public class HomeAssistantPluginReceiver extends com.fr3ts0n.androbd.plugin.Plug
                     Log.d(TAG, "Service start scheduled via inexact alarm (exact alarms not permitted)");
                 }
             } else {
-                // Android 12 (API 31-32): exact alarms always permitted
+                // Android 12 (API 31-32 / S and S_V2): exact alarms always permitted
                 alarmManager.setExactAndAllowWhileIdle(
                     AlarmManager.RTC_WAKEUP,
                     System.currentTimeMillis() + ALARM_DELAY_MS,
