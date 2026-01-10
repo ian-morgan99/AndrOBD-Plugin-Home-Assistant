@@ -56,15 +56,11 @@ public class SettingsActivity extends Activity {
     private void checkAndRequestPermissions() {
         List<String> permissionsNeeded = new ArrayList<>();
         
-        // Location permissions (required for WiFi scanning on Android 6.0+)
+        // Location permission (required for WiFi scanning on Android 6.0+)
+        // Note: ACCESS_FINE_LOCATION automatically grants ACCESS_COARSE_LOCATION
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) 
                 != PackageManager.PERMISSION_GRANTED) {
             permissionsNeeded.add(Manifest.permission.ACCESS_FINE_LOCATION);
-        }
-        
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) 
-                != PackageManager.PERMISSION_GRANTED) {
-            permissionsNeeded.add(Manifest.permission.ACCESS_COARSE_LOCATION);
         }
         
         // Notification permission (required on Android 13+)
@@ -92,9 +88,10 @@ public class SettingsActivity extends Activity {
         boolean hasNotification = false;
         
         for (String permission : permissions) {
-            if (permission.contains("LOCATION")) {
+            if (Manifest.permission.ACCESS_FINE_LOCATION.equals(permission) ||
+                Manifest.permission.ACCESS_COARSE_LOCATION.equals(permission)) {
                 hasLocation = true;
-            } else if (permission.contains("NOTIFICATION")) {
+            } else if (Manifest.permission.POST_NOTIFICATIONS.equals(permission)) {
                 hasNotification = true;
             }
         }
@@ -183,13 +180,14 @@ public class SettingsActivity extends Activity {
         message.append("Some permissions were not granted. This will limit functionality:\n\n");
         
         for (String permission : deniedPermissions) {
-            if (permission.contains("LOCATION")) {
+            if (Manifest.permission.ACCESS_FINE_LOCATION.equals(permission) ||
+                Manifest.permission.ACCESS_COARSE_LOCATION.equals(permission)) {
                 message.append("📍 Location Denied:\n");
                 message.append("• WiFi network scanning disabled\n");
                 message.append("• Cannot detect when home network is in range\n");
                 message.append("• Automatic WiFi switching unavailable\n");
                 message.append("• Location sensor feature unavailable\n\n");
-            } else if (permission.contains("NOTIFICATION")) {
+            } else if (Manifest.permission.POST_NOTIFICATIONS.equals(permission)) {
                 message.append("🔔 Notifications Denied:\n");
                 message.append("• Status notifications may not appear\n");
                 message.append("• Network indicator may not display\n\n");
