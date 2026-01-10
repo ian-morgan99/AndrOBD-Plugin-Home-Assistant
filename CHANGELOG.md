@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Package conflict warnings between debug and release builds**: Both build types now use the same signing key
+  - Debug builds now explicitly use the release keystore instead of Android's default debug keystore
+  - This prevents "package conflict" warnings when switching between debug and release APKs
+  - Users can now install debug builds from CI/PR checks and then upgrade to release builds seamlessly
+  - Complements the earlier fix that added consistent release signing to prevent update conflicts
 - **Connectivity issues with OBD-II reader**: Improved HTTP client reliability for flaky connections
   - Increased connection timeouts: connect 10s→30s, write 10s→30s, read 30s→60s
   - Added overall call timeout of 90 seconds to prevent indefinite hangs

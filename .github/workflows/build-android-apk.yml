@@ -44,10 +44,12 @@ jobs:
         run: chmod +x gradlew
 
       # Step 6: Build Debug APKs for all application modules
+      # Note: Debug builds use the same release keystore to prevent package conflicts
       - name: Build Debug APKs
         run: ./gradlew assembleDebug --stacktrace --info
 
       # Step 7: Build Release APKs for all application modules
+      # Note: Both debug and release use the same signing key for consistency
       - name: Build Release APKs
         run: ./gradlew assembleRelease --stacktrace --info
 
