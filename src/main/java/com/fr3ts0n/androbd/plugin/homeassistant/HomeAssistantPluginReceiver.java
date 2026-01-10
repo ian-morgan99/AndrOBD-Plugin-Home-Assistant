@@ -90,8 +90,8 @@ public class HomeAssistantPluginReceiver extends com.fr3ts0n.androbd.plugin.Plug
             // This may still fail with ForegroundServiceStartNotAllowedException,
             // but it's better than silently doing nothing
             Log.e(TAG, "SecurityException scheduling alarm - attempting direct service start as fallback", e);
-            intent.setClass(context, getPluginClass());
-            context.startForegroundService(intent);
+            originalIntent.setClass(context, getPluginClass());
+            context.startForegroundService(originalIntent);
         }
     }
 }
