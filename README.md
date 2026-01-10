@@ -2,7 +2,9 @@
 
 This extension plugin allows AndrOBD to publish OBD-II vehicle data to Home Assistant via webhooks or REST API.
 
-> **Latest Update**: Fixed plugin recognition on Android 8.0+. If the plugin wasn't appearing in AndrOBD's Plugin Manager, this update fixes that issue. See [CHANGELOG.md](CHANGELOG.md) for details.
+> **Latest Update**: Improved connectivity reliability for flaky OBD-II connections. Extended HTTP timeouts, added connection pooling, and improved DNS resolution for better performance with slow/unreliable WiFi connections. See [CONNECTIVITY_IMPROVEMENTS.md](CONNECTIVITY_IMPROVEMENTS.md) for details.
+
+> **Previous Update**: Fixed plugin recognition on Android 8.0+. If the plugin wasn't appearing in AndrOBD's Plugin Manager, this update fixes that issue. See [CHANGELOG.md](CHANGELOG.md) for details.
 
 ## Features
 
@@ -276,6 +278,31 @@ automation:
 ```
 
 ## Troubleshooting
+
+### Connectivity issues with OBD-II reader or Home Assistant
+If data transmission is unreliable or connections timeout frequently:
+
+1. **Check WiFi signal strength** - Weak WiFi can cause timeouts
+   - Move closer to WiFi access point or OBD adapter
+   - Check signal strength in Android WiFi settings
+2. **Verify Home Assistant is accessible** - Test in a browser from your phone
+   - Try accessing your Home Assistant URL in Chrome
+   - Should see Home Assistant login page
+3. **Check for network conflicts** - Some OBD adapters interfere with other WiFi
+   - Try using a different WiFi channel on your router
+   - Use SSID in Range mode for automatic switching
+4. **Review timeout settings** - Recent updates increased timeouts for reliability
+   - Latest version has 30s connect, 30s write, 60s read timeouts
+   - Update to latest version if experiencing timeouts
+5. **Check DNS resolution** - mDNS `.local` domains can be flaky
+   - Try using IP address instead of `.local` domain
+   - Ensure mDNS/Bonjour is enabled on your network
+6. **Enable connection logging** - Use adb logcat to see detailed errors
+   ```bash
+   adb logcat | grep HomeAssistantPlugin
+   ```
+
+See [CONNECTIVITY_IMPROVEMENTS.md](CONNECTIVITY_IMPROVEMENTS.md) for detailed technical information.
 
 ### Plugin not appearing in AndrOBD Plugin Manager (Android 8.0+)
 If you're running Android 8.0 (Oreo) or newer and the plugin doesn't appear in AndrOBD's Plugin Manager:

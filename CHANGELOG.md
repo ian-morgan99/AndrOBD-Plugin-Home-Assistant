@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Connectivity issues with OBD-II reader**: Improved HTTP client reliability for flaky connections
+  - Increased connection timeouts: connect 10s→30s, write 10s→30s, read 30s→60s
+  - Added overall call timeout of 90 seconds to prevent indefinite hangs
+  - Enabled automatic retry on connection failures for transient network errors
+  - Added connection pooling (5 connections, 5 minute keep-alive) to reduce connection overhead
+  - Implemented dual-stack DNS resolver that prefers IPv4 over IPv6 for better local network compatibility
+  - These changes address flakiness caused by slow/unreliable WiFi connections to OBD-II readers
+  - Network security protocols (HTTPS enforcement) remain in place - timeouts extended to work with secure connections
 - **Package conflict when updating app**: Changed from debug signing to consistent release keystore
   - Created a release keystore (`release-keystore.jks`) that is included in the repository
   - All builds now use the same signing key, allowing seamless updates without uninstallation

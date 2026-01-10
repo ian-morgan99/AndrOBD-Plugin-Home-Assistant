@@ -31,6 +31,10 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -39,6 +43,9 @@ import java.util.concurrent.TimeUnit;
 
 import okhttp3.Call;
 import okhttp3.Callback;
+import okhttp3.ConnectionPool;
+import okhttp3.Dns;
+import okhttp3.Interceptor;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -153,11 +160,16 @@ public class HomeAssistantPlugin extends Plugin
             Log.w(TAG, "WifiManager is null - WiFi state detection will not work");
         }
 
-        // Initialize HTTP client
+        // Initialize HTTP client with increased timeouts for reliability
+        // OBD-II connections can be slow/unreliable, especially over WiFi
         httpClient = new OkHttpClient.Builder()
-                .connectTimeout(10, TimeUnit.SECONDS)
-                .writeTimeout(10, TimeUnit.SECONDS)
-                .readTimeout(30, TimeUnit.SECONDS)
+                .connectTimeout(30, TimeUnit.SECONDS)  // Increased from 10s
+                .writeTimeout(30, TimeUnit.SECONDS)    // Increased from 10s
+                .readTimeout(60, TimeUnit.SECONDS)     // Increased from 30s
+                .callTimeout(90, TimeUnit.SECONDS)     // Overall timeout for complete call
+                .retryOnConnectionFailure(true)        // Retry on connection failures
+                .connectionPool(new ConnectionPool(5, 5, TimeUnit.MINUTES))  // Connection pooling
+                .dns(new DualStackDns())               // Better DNS resolution with IPv4/IPv6 fallback
                 .build();
         
         // Initialize WiFi state and update notification to show accurate status
@@ -921,5 +933,47 @@ public class HomeAssistantPlugin extends Plugin
         onSharedPreferenceChanged(prefs, PREF_HA_AUTO_SWITCH);
         onSharedPreferenceChanged(prefs, ITEMS_SELECTED);
         onSharedPreferenceChanged(prefs, ITEMS_KNOWN);
+    }
+
+    /**
+     * Custom DNS implementation that prefers IPv4 over IPv6 for better compatibility
+     * Falls back gracefully when DNS resolution fails
+     */
+    private static class DualStackDns implements Dns {
+        @Override
+        public List<InetAddress> lookup(String hostname) throws UnknownHostException {
+            if (hostname == null) {
+                throw new UnknownHostException("hostname == null");
+            }
+            
+            try {
+                InetAddress[] addresses = InetAddress.getAllByName(hostname);
+                List<InetAddress> result = new ArrayList<>();
+                
+                // Prefer IPv4 addresses first for better compatibility with local networks
+                for (InetAddress address : addresses) {
+                    if (address instanceof java.net.Inet4Address) {
+                        result.add(address);
+                    }
+                }
+                
+                // Then add IPv6 addresses as fallback
+                for (InetAddress address : addresses) {
+                    if (address instanceof java.net.Inet6Address) {
+                        result.add(address);
+                    }
+                }
+                
+                if (result.isEmpty()) {
+                    throw new UnknownHostException("No addresses found for: " + hostname);
+                }
+                
+                return result;
+            } catch (UnknownHostException e) {
+                // Log and re-throw - OkHttp will handle retries
+                Log.w("HomeAssistantPlugin", "DNS resolution failed for: " + hostname, e);
+                throw e;
+            }
+        }
     }
 }
