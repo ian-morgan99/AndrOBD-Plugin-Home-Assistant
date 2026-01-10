@@ -1,5 +1,7 @@
 package com.fr3ts0n.androbd.plugin.homeassistant;
 
+import android.app.AlarmManager;
+import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
@@ -7,7 +9,7 @@ import android.util.Log;
 
 /**
  * Plugin broadcast receiver for Home Assistant plugin
- * Overrides onReceive to properly start foreground service on Android O+
+ * Handles service start with Android 12+ background service restrictions
  */
 public class HomeAssistantPluginReceiver extends com.fr3ts0n.androbd.plugin.PluginReceiver {
     private static final String TAG = "HomeAssistantPluginReceiver";
@@ -20,14 +22,71 @@ public class HomeAssistantPluginReceiver extends com.fr3ts0n.androbd.plugin.Plug
     @Override
     public void onReceive(Context context, Intent intent) {
         Log.v(TAG, "Broadcast received: " + intent);
-        intent.setClass(context, getPluginClass());
         
-        // On Android O and above, use startForegroundService for services that will call startForeground()
-        // This is required to avoid IllegalStateException on modern Android versions
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        // Android 12+ (API 31+) has stricter restrictions on starting foreground services
+        // from background contexts (BroadcastReceivers). We use AlarmManager as a workaround
+        // because exact alarms are an exempted scenario that allows foreground service starts.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // Android 12+ (API 31+): Use AlarmManager to defer service start
+            // This makes the service start from an exempted context
+            scheduleServiceStart(context, intent);
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // Android 8-11: Use startForegroundService directly
+            intent.setClass(context, getPluginClass());
             context.startForegroundService(intent);
         } else {
+            // Android 7.1 and below: Use regular startService
+            intent.setClass(context, getPluginClass());
             context.startService(intent);
+        }
+    }
+    
+    /**
+     * Schedule service start via AlarmManager (Android 12+ workaround)
+     * This allows foreground service to start from an exempted context
+     */
+    private void scheduleServiceStart(Context context, Intent originalIntent) {
+        AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+        if (alarmManager == null) {
+            Log.e(TAG, "AlarmManager not available - cannot start service on Android 12+");
+            return;
+        }
+        
+        // Create an intent for the service starter receiver
+        Intent alarmIntent = new Intent(context, HomeAssistantServiceStarter.class);
+        // Pass the original action so the service knows what to do
+        alarmIntent.setAction(originalIntent.getAction());
+        if (originalIntent.getExtras() != null) {
+            alarmIntent.putExtras(originalIntent.getExtras());
+        }
+        
+        // Create PendingIntent with FLAG_IMMUTABLE for security (required on Android 12+)
+        PendingIntent pendingIntent = PendingIntent.getBroadcast(
+            context, 
+            0, 
+            alarmIntent, 
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+        
+        try {
+            // Schedule exact alarm for immediate execution (1ms from now)
+            // This creates an exempted context for foreground service start
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    System.currentTimeMillis() + 1,
+                    pendingIntent
+                );
+            } else {
+                alarmManager.setExact(
+                    AlarmManager.RTC_WAKEUP,
+                    System.currentTimeMillis() + 1,
+                    pendingIntent
+                );
+            }
+            Log.d(TAG, "Service start scheduled via AlarmManager for Android 12+");
+        } catch (SecurityException e) {
+            Log.e(TAG, "SecurityException scheduling alarm - SCHEDULE_EXACT_ALARM permission may be missing", e);
         }
     }
 }

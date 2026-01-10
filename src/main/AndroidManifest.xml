@@ -18,6 +18,10 @@
     <!-- Foreground service permission for showing network indicator notification -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     
+    <!-- Schedule exact alarm permission for Android 12+ to work around foreground service restrictions -->
+    <!-- Required to start foreground service from BroadcastReceiver on Android 12+ -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+    
     <!-- WiFi hardware is optional - app works without it in some modes -->
     <uses-feature android:name="android.hardware.wifi" android:required="false"/>
 
@@ -38,6 +42,11 @@
                 <category android:name="com.fr3ts0n.androbd.plugin.REQUEST" />
             </intent-filter>
         </receiver>
+        
+        <!-- Service starter for Android 12+ alarm-based workaround -->
+        <receiver android:name=".HomeAssistantServiceStarter"
+            android:exported="false"
+            android:enabled="true"/>
 
         <service android:name=".HomeAssistantPlugin"
             android:exported="true"
