@@ -96,42 +96,42 @@ INFO: Target WiFi found in range: 'MyHomeNetwork' (Signal: -45 dBm)
 ```
 This app requires the following permissions:
 
-📍 Location:
-• Scan for WiFi networks (required by Android)
-• Detect when home network is in range
-• Enable automatic WiFi switching
-• Future: Send vehicle location to Home Assistant
+Location:
+- Scan for WiFi networks (required by Android)
+- Detect when home network is in range
+- Enable automatic WiFi switching
+- Optional: Send vehicle location to Home Assistant
 
-Note: Location is NOT tracked. Only used for WiFi scanning.
+Note: Location is not tracked unless you explicitly enable the location tracking option.
 
-🔔 Notifications:
-• Display network status indicator
-• Show connection/transmission status
+Notifications:
+- Display network status indicator
+- Show connection/transmission status
 ```
 
 **On Grant:**
 ```
 All required permissions have been granted. The app can now:
-✓ Scan for WiFi networks
-✓ Detect home network proximity
-✓ Enable automatic WiFi switching
-✓ Display status notifications
-✓ Future: Track vehicle location
+- Scan for WiFi networks
+- Detect home network proximity
+- Enable automatic WiFi switching
+- Display status notifications
+- Optional: Track vehicle location (when enabled)
 ```
 
 **On Denial:**
 ```
 Some permissions were not granted. This will limit functionality:
 
-📍 Location Denied:
-• WiFi network scanning disabled
-• Cannot detect when home network is in range
-• Automatic WiFi switching unavailable
-• Location sensor feature unavailable
+Location Denied:
+- WiFi network scanning disabled
+- Cannot detect when home network is in range
+- Automatic WiFi switching unavailable
+- Location sensor feature unavailable
 
-🔔 Notifications Denied:
-• Status notifications may not appear
-• Network indicator may not display
+Notifications Denied:
+- Status notifications may not appear
+- Network indicator may not display
 ```
 
 #### Technical Implementation

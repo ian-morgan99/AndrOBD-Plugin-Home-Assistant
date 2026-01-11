@@ -13,9 +13,9 @@ The AndrOBD Home Assistant plugin now includes proper runtime permission handlin
 - Android requires location permission for WiFi scanning (security measure)
 - Used to detect when home WiFi network is in range
 - Enables automatic WiFi switching between OBD-II adapter and home network
-- Future feature: Send vehicle GPS location to Home Assistant
+- Optional feature: Send vehicle GPS location to Home Assistant (when enabled)
 
-**Important:** The app does NOT track your location continuously. Location permission is only used for WiFi network detection as required by Android's security model.
+**Important:** The app does not track your location unless you explicitly enable the location tracking option. Location permission is primarily used for WiFi network detection as required by Android's security model. For journey monitoring and route efficiency tracking, you can optionally enable location transmission in the app settings.
 
 ### Notification Permission (POST_NOTIFICATIONS)
 **Status:** Required on Android 13+ (API 33+)
@@ -39,11 +39,11 @@ When the app is opened for the first time (or after permissions have been revoke
 
 ### Permission Grant
 If user grants all permissions, a confirmation dialog shows:
-- ✓ Scan for WiFi networks
-- ✓ Detect home network proximity
-- ✓ Enable automatic WiFi switching
-- ✓ Display status notifications
-- ✓ Future: Track vehicle location
+- Scan for WiFi networks
+- Detect home network proximity
+- Enable automatic WiFi switching
+- Display status notifications
+- Optional: Track vehicle location (when enabled in settings)
 
 ### Permission Denial
 If user denies any permission, a dialog explains the impact:
@@ -69,7 +69,7 @@ The dialog provides a shortcut to Android Settings where permissions can be gran
 
 ### Transparency
 - Clear explanation of what each permission is used for
-- Explicit statement that location is NOT tracked
+- Explicit statement that location is not tracked unless explicitly enabled
 - List of features that will be enabled/disabled
 
 ### Compliance
