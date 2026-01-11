@@ -11,9 +11,13 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE"/>
     
     <!-- Location permission required for WiFi scanning on Android 6.0+ -->
-    <!-- Only used for detecting WiFi network presence, not for tracking location -->
+    <!-- Also used for future feature: sending vehicle GPS location to Home Assistant -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    
+    <!-- Notification permission for Android 13+ (API 33+) -->
+    <!-- Required to show foreground service notification and status updates -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     
     <!-- Foreground service permission for showing network indicator notification -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
