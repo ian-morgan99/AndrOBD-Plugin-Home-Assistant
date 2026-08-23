@@ -113,6 +113,11 @@ public class HomeAssistantPlugin extends Plugin
     private LogManager logManager;
     private DataDbHelper dbHelper;
 
+    // Guards against overlapping transmission batches when the network is slow:
+    // while true, scheduled update cycles are skipped until in-flight requests settle
+    private final java.util.concurrent.atomic.AtomicBoolean transmitInProgress =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
     // Data storage
     private final Map<String, String> dataCache = new HashMap<>();
     private static final int MSG_SEND_UPDATE = 1;
@@ -136,6 +141,10 @@ public class HomeAssistantPlugin extends Plugin
     private boolean isOBDWifiInRange = false;
     private boolean isSwitchingNetwork = false;
     private boolean hasPendingTransmission = false;
+    // Earliest time the next auto-switch attempt may be issued (cooldown to
+    // prevent rapid repeated switch attempts when a switch cannot complete)
+    private long nextSwitchAttemptTime = 0;
+    private static final long SWITCH_RETRY_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
 
     @Override
     public void onCreate() {
@@ -653,20 +662,21 @@ public class HomeAssistantPlugin extends Plugin
             return false;
         }
 
-        NetworkInfo networkInfo = connectivityManager.getActiveNetworkInfo();
-        if (networkInfo == null) {
-            logManager.logDebug("Connection check: No active network");
-            return false;
-        }
-        
-        if (!networkInfo.isConnected()) {
-            logManager.logDebug("Connection check: Network not connected (state: " + networkInfo.getState() + ")");
-            return false;
-        }
-        
-        if (networkInfo.getType() != ConnectivityManager.TYPE_WIFI) {
-            logManager.logDebug("Connection check: Not connected to WiFi (type: " + networkInfo.getTypeName() + ")");
-            return false;
+        String targetSSIDClean = ssid.replace("\"", "");
+
+        // Modern path (API 23+): inspect the actual active network's transport,
+        // which is reliable regardless of deprecation status.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            Network activeNetwork = connectivityManager.getActiveNetwork();
+            if (activeNetwork == null) {
+                logManager.logDebug("Connection check: No active network");
+                return false;
+            }
+            NetworkCapabilities caps = connectivityManager.getNetworkCapabilities(activeNetwork);
+            if (caps == null || !caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+                logManager.logDebug("Connection check: Active network is not WiFi");
+                return false;
+            }
         }
 
         WifiInfo wifiInfo = wifiManager.getConnectionInfo();
@@ -683,10 +693,9 @@ public class HomeAssistantPlugin extends Plugin
 
         // Remove quotes from SSID if present
         currentSSID = currentSSID.replace("\"", "");
-        String targetSSIDClean = ssid.replace("\"", "");
-        
+
         boolean isConnected = currentSSID.equals(targetSSIDClean);
-        logManager.logDebug("Connection check: Currently connected to '" + currentSSID + 
+        logManager.logDebug("Connection check: Currently connected to '" + currentSSID +
             "', target is '" + targetSSIDClean + "', match: " + isConnected);
 
         return isConnected;
@@ -768,16 +777,22 @@ public class HomeAssistantPlugin extends Plugin
         if (handler == null) {
             return;
         }
-        
+
         // Check if we have buffered data to transmit
         long unsentCount = dbHelper.getUnsentRecordCount();
         boolean hasDataToSend = unsentCount > 0;
+
+        // Cooldown: avoid re-issuing switch attempts every check cycle (30s) when
+        // a switch cannot complete (e.g. Android 10+ restrictions, user absent).
+        long now = System.currentTimeMillis();
+        boolean inCooldown = now < nextSwitchAttemptTime;
         
         // Decision logic for automatic switching
-        if (hasDataToSend && isHomeWifiInRange && !isConnectedToHomeWifi) {
+        if (hasDataToSend && isHomeWifiInRange && !isConnectedToHomeWifi && !inCooldown && !isSwitchingNetwork) {
             // We have data to send and home WiFi is in range but not connected
             logManager.logInfo("Auto-switch: Switching to home WiFi to transmit " + unsentCount + " buffered records");
             hasPendingTransmission = true;
+            nextSwitchAttemptTime = now + SWITCH_RETRY_COOLDOWN_MS;
             handler.sendEmptyMessage(MSG_SWITCH_TO_HOME);
         } else if (hasPendingTransmission && isConnectedToHomeWifi) {
             // We switched to home WiFi, transmission should happen automatically
@@ -788,9 +803,10 @@ public class HomeAssistantPlugin extends Plugin
             // Schedule switch back to OBD WiFi after transmission completes
             // Give time for transmission to complete
             handler.sendEmptyMessageDelayed(MSG_SWITCH_TO_OBD, transmissionTimeout);
-        } else if (!isHomeWifiInRange && isOBDWifiInRange && !isConnectedToSSID(obdSSID)) {
+        } else if (!isHomeWifiInRange && isOBDWifiInRange && !isConnectedToSSID(obdSSID) && !inCooldown && !isSwitchingNetwork) {
             // Home WiFi not in range, OBD WiFi is available but not connected
             logManager.logInfo("Auto-switch: Switching back to OBD WiFi to continue data collection");
+            nextSwitchAttemptTime = now + SWITCH_RETRY_COOLDOWN_MS;
             handler.sendEmptyMessage(MSG_SWITCH_TO_OBD);
         }
     }
@@ -815,6 +831,26 @@ public class HomeAssistantPlugin extends Plugin
         try {
             logManager.logInfo("Attempting to switch to network: " + (isHomeNetwork ? "Home WiFi" : "OBD WiFi"));
             
+            // On Android 10+ (API 29+) getConfiguredNetworks()/enableNetwork() no longer work
+            // for third-party apps. Direct the user to the system WiFi settings panel instead,
+            // where they can pick the target network; OS auto-connect handles the rest.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                logManager.logInfo("Android 10+ detected - opening WiFi settings panel so user can connect to '" + ssidClean + "'");
+                Intent panelIntent = new Intent(android.provider.Settings.Panel.ACTION_WIFI);
+                panelIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                try {
+                    startActivity(panelIntent);
+                } catch (Exception e) {
+                    // Fall back to general wireless settings if panel unavailable
+                    logManager.logWarning("WiFi panel unavailable, falling back to wireless settings: " + e.getMessage());
+                    Intent fallback = new Intent(android.provider.Settings.ACTION_WIRELESS_SETTINGS);
+                    fallback.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(fallback);
+                }
+                isSwitchingNetwork = false;
+                return;
+            }
+
             // Get list of configured networks
             // NOTE: Returns null on Android 10+ due to privacy restrictions
             List<WifiConfiguration> configuredNetworks = wifiManager.getConfiguredNetworks();
@@ -922,18 +958,17 @@ public class HomeAssistantPlugin extends Plugin
                 return canSendConnected;
                 
             case "ssid_in_range":
-                // For ssid_in_range mode: Only send when actually CONNECTED to home WiFi with internet
-                // (not just when in range - user must manually switch to home WiFi first)
+                // Send when connected to home WiFi, OR when home WiFi is merely IN RANGE
+                // (buffered data is then flushed over mobile data / any available network).
                 if (targetSSID == null || targetSSID.isEmpty()) {
                     logManager.logWarning("Target SSID not configured for ssid_in_range mode");
                     return false;
                 }
-                // Must be connected to home WiFi (not just in range) AND have internet connectivity
-                boolean canSend = isConnectedToHomeWifi && hasInternet;
-                if (!canSend && isHomeWifiInRange) {
-                    logManager.logInfo("Home WiFi in range but not connected - switch networks to transmit buffered data");
+                boolean canSend = (isConnectedToHomeWifi || isHomeWifiInRange) && hasInternet;
+                if (!isConnectedToHomeWifi && isHomeWifiInRange && canSend) {
+                    logManager.logInfo("Home WiFi in range but not connected - transmitting buffered data over available network");
                 }
-                logManager.logDebug("SSID in range mode check: connected=" + isConnectedToHomeWifi + 
+                logManager.logDebug("SSID in range mode check: connected=" + isConnectedToHomeWifi +
                     ", in_range=" + isHomeWifiInRange + ", internet=" + hasInternet + " -> " + (canSend ? "SEND" : "SKIP"));
                 return canSend;
                 
@@ -956,22 +991,41 @@ public class HomeAssistantPlugin extends Plugin
         }
 
         try {
+            // Modern check first: NetworkCapabilities is reliable on API 23+ and
+            // correctly reports validated internet across WiFi/cellular/vpn.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                Network activeNetwork = connectivityManager.getActiveNetwork();
+                if (activeNetwork == null) {
+                    logManager.logDebug("No active network available (NetworkCapabilities path)");
+                    return false;
+                }
+                NetworkCapabilities caps = connectivityManager.getNetworkCapabilities(activeNetwork);
+                boolean hasInternet = caps != null
+                        && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                        && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+                logManager.logDebug("Internet check (capabilities): " + hasInternet);
+                return hasInternet;
+            }
+
+            // Legacy fallback for API < 23
+            @SuppressWarnings("deprecation")
             NetworkInfo activeNetwork = connectivityManager.getActiveNetworkInfo();
             if (activeNetwork == null) {
                 logManager.logDebug("No active network available");
                 return false;
             }
-            
+
+            @SuppressWarnings("deprecation")
             boolean isConnected = activeNetwork.isConnectedOrConnecting() && activeNetwork.isAvailable();
-            
+
             if (!isConnected) {
-                logManager.logDebug("No active network connection available (state: " + activeNetwork.getState() + 
+                logManager.logDebug("No active network connection available (state: " + activeNetwork.getState() +
                     ", type: " + activeNetwork.getTypeName() + ")");
             } else {
-                logManager.logDebug("Active network available: " + activeNetwork.getTypeName() + 
+                logManager.logDebug("Active network available: " + activeNetwork.getTypeName() +
                     " (connected: " + activeNetwork.isConnected() + ")");
             }
-            
+
             return isConnected;
         } catch (Exception e) {
             logManager.logError("Error checking internet connectivity: " + e.getMessage());
@@ -983,6 +1037,21 @@ public class HomeAssistantPlugin extends Plugin
      * Send accumulated data to Home Assistant
      */
     private void sendDataToHomeAssistant() {
+        // Skip if a previous batch is still in flight - the network is slow or
+        // down; re-firing now would only pile up requests and make things worse.
+        if (!transmitInProgress.compareAndSet(false, true)) {
+            logManager.logDebug("Transmission already in progress - skipping this cycle");
+            return;
+        }
+
+        try {
+            transmitBatch();
+        } finally {
+            transmitInProgress.set(false);
+        }
+    }
+
+    private void transmitBatch() {
         // Check if we should send based on transmission mode and WiFi state
         if (!shouldSendData()) {
             logManager.logDebug("Not sending data - transmission mode conditions not met (mode: " + transmissionMode + ")");
@@ -1071,7 +1140,12 @@ public class HomeAssistantPlugin extends Plugin
             JSONObject attributes = new JSONObject();
             attributes.put("friendly_name", key);
             attributes.put("source", "AndrOBD");
+            // Report when the reading was actually taken so buffered/backfilled
+            // data is not mislabeled as current
             attributes.put("timestamp", timestamp);
+            attributes.put("device_class_timestamp", new java.text.SimpleDateFormat(
+                    "yyyy-MM-dd'T'HH:mm:ssZZZZZ", java.util.Locale.US)
+                    .format(new java.util.Date(timestamp)));
             json.put("attributes", attributes);
 
             RequestBody body = RequestBody.create(
@@ -1095,7 +1169,9 @@ public class HomeAssistantPlugin extends Plugin
                 @Override
                 public void onFailure(@NonNull Call call, @NonNull IOException e) {
                     logManager.logError("Network error sending update for " + key + ": " + e.getMessage());
-                    // Data will remain in cache and retry on next update cycle
+                    // Schedule a retry so buffered data still flushes even if no new
+                    // data points arrive (e.g. drive ended before network recovered)
+                    scheduleRetry();
                 }
 
                 @Override
@@ -1105,6 +1181,13 @@ public class HomeAssistantPlugin extends Plugin
                             logManager.logInfo("Successfully sent " + key + " (id=" + record.getId() + ")");
                             // Mark record as sent in database
                             dbHelper.markAsSent(record.getId());
+                            // Also flush older buffered values for this key that were
+                            // superseded by the value just transmitted, so the buffer
+                            // does not grow unboundedly while offline
+                            int flushed = dbHelper.markSupersededAsSent(key, timestamp);
+                            if (flushed > 0) {
+                                logManager.logDebug("Flushed " + flushed + " superseded records for " + key);
+                            }
                         } else {
                             logManager.logError("HTTP error updating " + entityId + ": " + response.code() + " " + response.message());
                             // Log response body for debugging if available
@@ -1135,6 +1218,18 @@ public class HomeAssistantPlugin extends Plugin
     public void performAction() {
         Log.d(TAG, "Action requested - triggering manual update");
         sendDataToHomeAssistant();
+    }
+
+    /**
+     * Schedule a delayed retransmission attempt after a network failure.
+     * Uses a backoff-friendly delay so a dead network is not hammered.
+     */
+    private void scheduleRetry() {
+        if (handler != null && !handler.hasMessages(MSG_SEND_UPDATE)) {
+            long retryDelay = Math.max(updateInterval, 15000);
+            handler.sendEmptyMessageDelayed(MSG_SEND_UPDATE, retryDelay);
+            logManager.logDebug("Retry scheduled in " + retryDelay + "ms");
+        }
     }
 
     /**

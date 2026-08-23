@@ -28,6 +28,9 @@ public class DataDbHelper extends SQLiteOpenHelper {
     private static final String COLUMN_VALUE = "value";
     private static final String COLUMN_TIMESTAMP = "timestamp";
     private static final String COLUMN_SENT = "sent";
+
+    // Maximum number of unsent records transmitted per update cycle
+    private static final int MAX_BATCH_SIZE = 200;
     
     // Create table SQL
     private static final String CREATE_TABLE = 
@@ -85,12 +88,18 @@ public class DataDbHelper extends SQLiteOpenHelper {
     }
     
     /**
-     * Get all unsent records
+     * Get unsent records, oldest first, capped to a maximum batch size so a
+     * large backlog accumulated while offline does not exhaust memory or
+     * flood Home Assistant with requests in a single cycle.
      */
     public List<DataRecord> getUnsentRecords() {
+        return getUnsentRecords(MAX_BATCH_SIZE);
+    }
+
+    public List<DataRecord> getUnsentRecords(int limit) {
         List<DataRecord> records = new ArrayList<>();
         SQLiteDatabase db = getReadableDatabase();
-        
+
         Cursor cursor = db.query(
                 TABLE_DATA,
                 null,
@@ -98,16 +107,17 @@ public class DataDbHelper extends SQLiteOpenHelper {
                 null,
                 null,
                 null,
-                COLUMN_TIMESTAMP + " ASC"
+                COLUMN_TIMESTAMP + " ASC",
+                String.valueOf(Math.max(1, limit))
         );
-        
+
         if (cursor != null) {
             while (cursor.moveToNext()) {
                 records.add(cursorToRecord(cursor));
             }
             cursor.close();
         }
-        
+
         return records;
     }
     
@@ -175,6 +185,20 @@ public class DataDbHelper extends SQLiteOpenHelper {
         }
     }
     
+    /**
+     * Mark all unsent records for a key with a timestamp older than the given
+     * timestamp as sent. Used to flush superseded buffered values once a newer
+     * value for the same key has been successfully transmitted.
+     */
+    public int markSupersededAsSent(String key, long newerThanTimestamp) {
+        SQLiteDatabase db = getWritableDatabase();
+        ContentValues values = new ContentValues();
+        values.put(COLUMN_SENT, 1);
+        return db.update(TABLE_DATA, values,
+                COLUMN_KEY + " = ? AND " + COLUMN_SENT + " = 0 AND " + COLUMN_TIMESTAMP + " < ?",
+                new String[]{key, String.valueOf(newerThanTimestamp)});
+    }
+
     /**
      * Delete old sent records (older than specified timestamp)
      */
